@@ -15,10 +15,12 @@ const storeIcons = [
 export function StoreIdentityEditor({
   initialName = "Happy Paws Pet Store",
   initialIcon = "Paw",
+  workspaceId,
   readOnly = false,
 }: {
   initialName?: string;
   initialIcon?: string;
+  workspaceId?: string;
   readOnly?: boolean;
 }) {
   const initialIconIndex = Math.max(0, storeIcons.findIndex((item) => item.label === initialIcon));
@@ -68,15 +70,21 @@ export function StoreIdentityEditor({
         ) : null}
       </div>
 
-      <label className="flex items-center gap-2">
+      <label className="flex min-w-0 items-center gap-2">
         <input
           aria-label="Store name"
           readOnly={readOnly}
-          className="w-[260px] bg-transparent font-semibold text-black outline-none transition placeholder:text-zinc-400 focus:border-b focus:border-black"
+          className="w-[260px] min-w-0 bg-transparent font-semibold text-black outline-none transition placeholder:text-zinc-400 focus:border-b focus:border-black"
           defaultValue={initialName}
         />
         {readOnly ? null : <Pencil className="size-4 stroke-[2.4] text-zinc-500" aria-hidden="true" />}
       </label>
+
+      {workspaceId ? (
+        <span className="rounded-full border border-border bg-zinc-50 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-zinc-500" title={workspaceId}>
+          ID {workspaceId.slice(0, 8)}
+        </span>
+      ) : null}
     </div>
   );
 }

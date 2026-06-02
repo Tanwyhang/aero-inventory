@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { startTransition, useCallback, useEffect, useMemo, useOptimistic } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, Box, Eye, Package } from "lucide-react";
+import { BarChart3, Box, Eye, Package, RotateCcw } from "lucide-react";
 import { motion } from "motion/react";
 
 import aeroLogo from "../../design/logoword.png";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { label: "Stock", href: "/", icon: Box, key: "stock" },
+  { label: "Restock", href: "/restock", icon: RotateCcw, key: "restock" },
   { label: "SKUs", href: "/sku", icon: Package, key: "skus" },
   { label: "Reports", href: "/reports", icon: BarChart3, key: "reports" },
 ] as const;
@@ -23,12 +24,14 @@ export function AppSidebar({
   showStaffToggle = false,
   isViewingAsStaff = false,
   onToggleStaffView,
+  restockCount = 0,
 }: {
-  active: "stock" | "skus" | "reports";
+  active: "stock" | "restock" | "skus" | "reports";
   role?: "admin" | "staff";
   showStaffToggle?: boolean;
   isViewingAsStaff?: boolean;
   onToggleStaffView?: () => void;
+  restockCount?: number;
 }) {
   const router = useRouter();
   const [optimisticActive, setOptimisticActive] = useOptimistic(active, (_current, next: NavKey) => next);
@@ -91,6 +94,14 @@ export function AppSidebar({
               ) : null}
               <Icon className="relative z-10 size-6 stroke-[2.1]" />
               <span className="relative z-10">{item.label}</span>
+              {item.key === "restock" && restockCount > 0 ? (
+                <span className={cn(
+                  "relative z-10 ml-auto grid min-w-6 place-items-center rounded-full px-2 py-0.5 text-xs font-black",
+                  optimisticActive === item.key ? "bg-lime text-black" : "bg-orange text-white",
+                )}>
+                  {restockCount}
+                </span>
+              ) : null}
             </button>
           );
         })}

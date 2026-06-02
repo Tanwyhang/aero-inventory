@@ -28,6 +28,7 @@ import { FluidEntrySurface } from "@/components/fluid-entry-surface";
 import { StoreIdentityEditor } from "@/components/store-identity-editor";
 import { Button } from "@/components/ui/button";
 import { WhatsAppLink } from "@/components/whatsapp-link";
+import { DEFAULT_STOCK_ADJUSTMENT_REASON, STOCK_ADJUSTMENT_REASONS, type StockAdjustmentReason } from "@/lib/stock-reasons";
 import { cn } from "@/lib/utils";
 import type { AdminInventoryRow, Membership, RestockRequestRow, RestockStatus, StaffInventoryRow } from "@/types/database";
 
@@ -37,7 +38,7 @@ function isAdminRow(row: InventoryRow): row is AdminInventoryRow {
   return "supplier_name" in row;
 }
 
-function ProductThumb({ label, photoUrl }: { label: string; photoUrl?: string | null }) {
+export function ProductThumb({ label, photoUrl, eager = false }: { label: string; photoUrl?: string | null; eager?: boolean }) {
   const fadeMask = "linear-gradient(to right, black 0%, black 48%, rgba(0,0,0,0.65) 68%, transparent 100%)";
   const washMask = "linear-gradient(to right, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.25) 54%, transparent 100%)";
 
@@ -50,6 +51,7 @@ function ProductThumb({ label, photoUrl }: { label: string; photoUrl?: string | 
             alt=""
             aria-hidden="true"
             fill
+            loading={eager ? "eager" : "lazy"}
             sizes="160px"
             className="scale-125 object-cover opacity-20 blur-2xl saturate-125"
             style={{ WebkitMaskImage: washMask, maskImage: washMask }}
@@ -59,6 +61,7 @@ function ProductThumb({ label, photoUrl }: { label: string; photoUrl?: string | 
             alt=""
             aria-hidden="true"
             fill
+            loading={eager ? "eager" : "lazy"}
             sizes="160px"
             className="object-cover"
             style={{ WebkitMaskImage: fadeMask, maskImage: fadeMask }}
@@ -99,6 +102,7 @@ function AdjustmentDialog({
 }) {
   const router = useRouter();
   const [quantity, setQuantity] = useState("1");
+  const [reason, setReason] = useState<StockAdjustmentReason>(DEFAULT_STOCK_ADJUSTMENT_REASON);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
@@ -116,6 +120,7 @@ function AdjustmentDialog({
         locationId: row.location_id,
         direction,
         quantity: Number(quantity),
+        reason,
         note,
       });
 
@@ -154,8 +159,16 @@ function AdjustmentDialog({
               <input min={1} required type="number" value={quantity} onChange={(event) => setQuantity(event.target.value)} className="h-12 rounded-lg border border-border px-4 text-lg font-bold outline-none focus:ring-2 focus:ring-lime" />
             </label>
             <label className="grid gap-2 text-sm font-bold text-zinc-600">
+              Reason
+              <select required value={reason} onChange={(event) => setReason(event.target.value as StockAdjustmentReason)} className="h-12 rounded-lg border border-border bg-white px-4 text-base font-bold outline-none focus:ring-2 focus:ring-lime">
+                {STOCK_ADJUSTMENT_REASONS.map((item) => (
+                  <option key={item} value={item}>{item}</option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-2 text-sm font-bold text-zinc-600">
               Note
-              <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} className="min-h-24 rounded-lg border border-border px-4 py-3 font-semibold outline-none focus:ring-2 focus:ring-lime" placeholder="Optional reason or context" />
+              <textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} className="min-h-24 rounded-lg border border-border px-4 py-3 font-semibold outline-none focus:ring-2 focus:ring-lime" placeholder="Optional notes for admin" />
             </label>
             <div className="rounded-xl bg-zinc-50 p-4 text-sm font-semibold text-zinc-600">
               Current stock: <span className="text-black">{row.quantity}</span> · After change: <span className={nextStock < 0 ? "text-red-600" : "text-black"}>{Number.isFinite(nextStock) ? nextStock : row.quantity}</span>
@@ -248,14 +261,9 @@ function PingDialog({ row, onClose }: { row: InventoryRow; onClose: () => void }
   );
 }
 
-function RestockQueue({ requests }: { requests: RestockRequestRow[] }) {
+export function RestockQueue({ requests, rows }: { requests: RestockRequestRow[]; rows: AdminInventoryRow[] }) {
   const router = useRouter();
-  const nextStatuses: RestockStatus[] = ["acknowledged", "ordered", "resolved", "cancelled"];
   const [pendingId, setPendingId] = useState<string | null>(null);
-
-  if (requests.length === 0) {
-    return null;
-  }
 
   function updateStatus(requestId: string, status: RestockStatus) {
     setPendingId(requestId);
@@ -266,41 +274,66 @@ function RestockQueue({ requests }: { requests: RestockRequestRow[] }) {
     });
   }
 
+  function nextAction(status: RestockStatus) {
+    if (status === "ordered") return { label: "Mark Resolved", status: "resolved" as const };
+    if (status === "open" || status === "acknowledged") return { label: "Mark Ordered", status: "ordered" as const };
+    return null;
+  }
+
   return (
-    <FluidEntrySurface className="mt-8 rounded-3xl border border-white/50 bg-white/60 backdrop-blur-2xl" contentClassName="p-6">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+    <FluidEntrySurface className="mt-8 rounded-3xl border border-orange/25 bg-orange/5 backdrop-blur-2xl" contentClassName="p-4 sm:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-black tracking-[-0.05em]">Admin Restock Queue</h2>
-          <p className="mt-1 text-sm font-semibold text-zinc-500">Open staff pings and request status tracking.</p>
+          <h2 className="text-xl font-black tracking-[-0.05em]">Restock Follow-Up</h2>
+          <p className="mt-1 text-sm font-semibold text-zinc-500">Contact supplier, then clear the request.</p>
         </div>
-        <div className="text-sm font-black uppercase tracking-[0.14em] text-orange">{requests.length} active</div>
+        <div className="rounded-full bg-orange px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-white">{requests.length} active</div>
       </div>
-      <div className="mt-5 grid gap-3">
-        {requests.map((request) => (
-          <div key={request.id} className="liquid-width-enter rounded-xl border border-white/40 bg-white/40 p-4 backdrop-blur-lg">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div>
-                <div className="text-base font-black tracking-[-0.03em]">{request.product_name}</div>
-                <div className="mt-1 text-sm font-semibold text-zinc-500">
-                  {request.sku_code} · pinged by {request.requested_by_name || request.requested_by_email || "Unknown staff"} · {request.status}
+      {requests.length === 0 ? (
+        <div className="mt-4 rounded-2xl border border-white/60 bg-white/65 p-6 text-sm font-bold text-zinc-500 backdrop-blur-lg">No active restock requests.</div>
+      ) : (
+        <div className="mt-4 grid gap-3">
+          {requests.map((request) => {
+          const row = rows.find((item) => item.sku_id === request.sku_id);
+          const action = nextAction(request.status);
+
+          return (
+            <div key={request.id} className="liquid-width-enter grid gap-4 rounded-2xl border border-white/60 bg-white/65 p-4 backdrop-blur-lg md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
+              <div className="flex items-start justify-between gap-3 md:block">
+                <div className="min-w-0 md:min-w-[220px]">
+                  <div className="truncate text-base font-black tracking-[-0.04em]">{request.product_name}</div>
+                  <div className="mt-1 text-xs font-bold text-zinc-500">{request.sku_code} · {request.status}</div>
                 </div>
-                <div className="mt-2 text-sm font-semibold text-zinc-600">
-                  Stock was {request.current_qty_snapshot}; low threshold {request.low_stock_qty_snapshot}
-                  {request.requested_qty ? ` · requested ${request.requested_qty}` : ""}
-                </div>
-                {request.note ? <div className="mt-2 text-sm font-medium text-zinc-500">{request.note}</div> : null}
+                <div className="shrink-0 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-black text-zinc-600 md:mt-2 md:inline-block">{request.current_qty_snapshot}/{request.low_stock_qty_snapshot}</div>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {nextStatuses.map((status) => (
-                  <Button key={status} type="button" variant={status === "cancelled" ? "outline" : "default"} disabled={pendingId === request.id || request.status === status} onClick={() => updateStatus(request.id, status)} className={cn("h-9 rounded-md px-3 text-xs font-bold capitalize", status === "cancelled" ? "bg-white hover:bg-white" : "bg-black text-white hover:bg-black")}>
-                    {status}
+              <div className="min-w-0 text-sm font-semibold text-zinc-600">
+                <div>Need {request.requested_qty ?? "restock"} · {request.requested_by_name || request.requested_by_email || "Staff"}</div>
+                {request.note ? <div className="mt-1 line-clamp-2 font-medium text-zinc-500">{request.note.replace("[demo] ", "")}</div> : null}
+              </div>
+              <div className="grid grid-cols-[1fr_40px_40px] gap-2 md:w-[300px]">
+                {row?.whatsapp_number ? (
+                  <WhatsAppLink phone={row.whatsapp_number} product={request.product_name} supplier={row.supplier_name ?? undefined} label="WhatsApp" className="h-10 rounded-lg bg-[#25D366] px-3 text-xs font-black text-white hover:bg-[#25D366]" />
+                ) : (
+                  <Button type="button" disabled className="h-10 rounded-lg bg-zinc-200 px-3 text-xs font-black text-zinc-500">No Contact</Button>
+                )}
+                {action ? (
+                  <Button type="button" aria-label={action.label} title={action.label} disabled={pendingId === request.id} onClick={() => updateStatus(request.id, action.status)} className="h-10 rounded-lg bg-lime px-0 text-black hover:bg-lime disabled:opacity-60">
+                    <Check className="size-5" />
                   </Button>
-                ))}
+                ) : (
+                  <Button type="button" aria-label="Settled" disabled className="h-10 rounded-lg bg-zinc-200 px-0 text-zinc-500">
+                    <Check className="size-5" />
+                  </Button>
+                )}
+                <Button type="button" aria-label="Discard request" title="Discard request" disabled={pendingId === request.id} onClick={() => updateStatus(request.id, "cancelled")} className="h-10 rounded-lg bg-red-500 px-0 text-white hover:bg-red-500 disabled:opacity-60">
+                  <X className="size-5" />
+                </Button>
               </div>
             </div>
-          </div>
-        ))}
-      </div>
+          );
+          })}
+        </div>
+      )}
     </FluidEntrySurface>
   );
 }
@@ -350,12 +383,12 @@ export function InventoryDashboard({
   return (
     <main className="min-h-screen bg-white text-black">
       <div className="min-h-screen lg:pl-[242px]">
-        <AppSidebar active="stock" role={effectiveRole} showStaffToggle={isAdmin} isViewingAsStaff={viewAsStaff} onToggleStaffView={() => setViewAsStaff((current) => !current)} />
+        <AppSidebar active="stock" role={effectiveRole} restockCount={restockRequests.length} showStaffToggle={isAdmin} isViewingAsStaff={viewAsStaff} onToggleStaffView={() => setViewAsStaff((current) => !current)} />
 
         <section className="px-5 py-8 sm:px-8 lg:px-7 xl:px-8">
           <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <StoreIdentityEditor initialName={membership.organization_name} initialIcon={membership.organization_icon} readOnly={effectiveRole !== "admin"} />
+              <StoreIdentityEditor initialName={membership.organization_name} initialIcon={membership.organization_icon} workspaceId={membership.organization_id} readOnly={effectiveRole !== "admin"} />
               <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-zinc-100 px-4 py-2 text-sm font-bold text-zinc-600">
                 <ShieldCheck className="size-4" />
                 {effectiveRole === "admin" ? "Admin view" : "Staff-safe view"}
@@ -381,8 +414,6 @@ export function InventoryDashboard({
               </form>
             </div>
           </header>
-
-          {effectiveRole === "admin" ? <RestockQueue requests={restockRequests} /> : null}
 
           <FluidEntrySurface className="mt-8 rounded-3xl border border-white/50 bg-white/60 backdrop-blur-2xl">
             <button type="button" onClick={() => setIsStatsOpen((current) => !current)} className="flex w-full items-center justify-between gap-4 px-5 py-3 text-left">
@@ -451,7 +482,7 @@ export function InventoryDashboard({
               return (
                 <FluidEntrySurface key={`${row.sku_id}-${row.location_id}`} entryDelay={Math.min(index * 0.07, 0.42)} className="rounded-3xl border border-white/50 bg-white/65 backdrop-blur-2xl transition-colors hover:border-zinc-300/80">
                   <div className="grid grid-cols-[128px_1fr] xl:grid-cols-[144px_minmax(240px,1fr)_210px_260px] xl:items-stretch">
-                    <ProductThumb label={row.product_name} photoUrl={row.photo_url} />
+                    <ProductThumb label={row.product_name} photoUrl={row.photo_url} eager={index === 0} />
 
                     <div className="flex min-w-0 items-center px-2.5 py-2 sm:px-3">
                       <div className="min-w-0 pr-2">

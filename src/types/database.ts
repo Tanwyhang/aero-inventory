@@ -1,5 +1,14 @@
 export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
 
+export type StockAdjustmentReason =
+  | "Returned"
+  | "New Products"
+  | "Stock Adjustment"
+  | "Transfer"
+  | "Others"
+  | "Excel Import"
+  | "Warehouse Transfer";
+
 export type Database = {
   public: {
     Tables: {
@@ -23,6 +32,37 @@ export type Database = {
           updated_at: string;
         };
       };
+      organization_members: {
+        Row: {
+          organization_id: string;
+          user_id: string;
+          role: "admin" | "staff";
+          status: "active" | "invited" | "disabled";
+          created_at: string;
+        };
+      };
+      locations: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string;
+          is_default: boolean;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      sku_variation_groups: {
+        Row: {
+          id: string;
+          organization_id: string;
+          product_name: string;
+          variation_name: string;
+          add_variation_images: boolean;
+          created_at: string;
+          updated_at: string;
+        };
+      };
       stock_movements: {
         Row: {
           id: string;
@@ -34,6 +74,7 @@ export type Database = {
           quantity_delta: number;
           quantity_before: number;
           quantity_after: number;
+          reason: StockAdjustmentReason;
           note: string | null;
           created_at: string;
         };
@@ -113,7 +154,7 @@ export type Database = {
         Returns: AdminInventoryRow[];
       };
       adjust_stock: {
-        Args: { p_sku_id: string; p_location_id: string; p_delta: number; p_note?: string | null };
+        Args: { p_sku_id: string; p_location_id: string; p_delta: number; p_note?: string | null; p_reason?: StockAdjustmentReason };
         Returns: { sku_id: string; location_id: string; quantity: number; movement_id: string }[];
       };
       create_restock_request: {
@@ -133,6 +174,10 @@ export type Database = {
         Returns: AdminSkuManagerRow[];
       };
       admin_create_sku: {
+        Args: Record<string, unknown>;
+        Returns: string;
+      };
+      admin_create_sku_variation_group: {
         Args: Record<string, unknown>;
         Returns: string;
       };
@@ -166,6 +211,7 @@ export type StaffInventoryRow = {
   sku_code: string;
   photo_path: string | null;
   photo_url?: string | null;
+  price: number;
   quantity: number;
   low_stock_qty: number;
   max_stock_qty: number;
@@ -215,6 +261,10 @@ export type AdminSkuManagerRow = {
   sku_code: string;
   photo_path: string | null;
   photo_url?: string | null;
+  price: number;
+  variation_group_id: string | null;
+  variation_name: string | null;
+  add_variation_images: boolean | null;
   quantity: number;
   low_stock_qty: number;
   max_stock_qty: number;

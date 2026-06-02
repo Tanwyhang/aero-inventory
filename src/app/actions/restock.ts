@@ -41,6 +41,7 @@ export async function createRestockRequestAction(input: z.input<typeof createRes
   }
 
   revalidatePath("/");
+  revalidatePath("/restock");
   revalidatePath("/reports");
 
   return { ok: true };
@@ -71,6 +72,7 @@ export async function updateRestockStatusAction(input: { requestId: string; stat
   }
 
   revalidatePath("/");
+  revalidatePath("/restock");
   revalidatePath("/reports");
 
   return { ok: true };

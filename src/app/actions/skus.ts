@@ -18,9 +18,32 @@ const skuSchema = z.object({
   contactName: z.string().trim().max(120).optional(),
   country: z.enum(["MY", "TH"]),
   phoneRaw: z.string().trim().min(5).max(60),
+  price: z.coerce.number().min(0).max(100000000),
   lowStockQty: z.coerce.number().int().min(0).max(100000),
   maxStockQty: z.coerce.number().int().min(0).max(100000),
   openingStock: z.coerce.number().int().min(0).max(100000).optional(),
+  demoPhotoPath: z.string().trim().max(500).optional(),
+});
+
+const variationItemSchema = z.object({
+  clientId: z.string().trim().min(1).max(80),
+  name: z.string().trim().min(1).max(120),
+  skuCode: z.string().trim().min(1).max(80),
+  price: z.coerce.number().min(0).max(100000000),
+  lowStockQty: z.coerce.number().int().min(0).max(100000),
+  maxStockQty: z.coerce.number().int().min(0).max(100000),
+  openingStock: z.coerce.number().int().min(0).max(100000),
+});
+
+const variationGroupSchema = z.object({
+  productName: z.string().trim().min(1).max(160),
+  variationName: z.string().trim().min(1).max(80),
+  addVariationImages: z.boolean(),
+  supplierName: z.string().trim().min(1).max(160),
+  contactName: z.string().trim().max(120).optional(),
+  country: z.enum(["MY", "TH"]),
+  phoneRaw: z.string().trim().min(5).max(60),
+  items: z.array(variationItemSchema).min(1).max(100),
 });
 
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
@@ -32,6 +55,19 @@ function extensionForPhoto(file: File) {
   if (file.type === "image/webp") return "webp";
   if (file.type === "image/gif") return "gif";
   return null;
+}
+
+function validatePhoto(file: File) {
+  if (file.size === 0) return "Choose a photo to upload.";
+  if (file.size > MAX_PHOTO_SIZE) return "Photo must be 5MB or smaller.";
+  if (!allowedPhotoTypes.has(file.type)) return "Use JPG, PNG, WebP, or GIF.";
+  if (!extensionForPhoto(file)) return "Unsupported photo type.";
+  return null;
+}
+
+function hasDuplicate(values: string[]) {
+  const normalized = values.map((value) => value.trim().toLowerCase()).filter(Boolean);
+  return new Set(normalized).size !== normalized.length;
 }
 
 export async function createSkuAction(input: z.input<typeof skuSchema>) {
@@ -53,12 +89,29 @@ export async function createSkuAction(input: z.input<typeof skuSchema>) {
     p_sku_code: parsed.data.skuCode,
     p_name: parsed.data.productName,
     p_variant: parsed.data.variant || "",
+    p_price: parsed.data.price,
     p_low_stock_qty: parsed.data.lowStockQty,
     p_max_stock_qty: parsed.data.maxStockQty,
     p_opening_stock: parsed.data.openingStock ?? 0,
   });
 
   if (error) return { ok: false, error: error.message };
+
+  if (parsed.data.demoPhotoPath && skuId) {
+    const { data: rows, error: rowError } = await supabase.rpc("get_admin_sku_manager_rows", { p_organization_id: membership.organization_id });
+    const canUseDemoPhoto = !rowError && (rows as AdminSkuManagerRow[] | null)?.some((item) => item.photo_path === parsed.data.demoPhotoPath);
+
+    if (canUseDemoPhoto) {
+      const extension = parsed.data.demoPhotoPath.split(".").pop() || "jpg";
+      const targetPath = `${membership.organization_id}/${skuId}/${crypto.randomUUID()}.${extension}`;
+      const { error: copyError } = await supabase.storage.from(SKU_PHOTOS_BUCKET).copy(parsed.data.demoPhotoPath, targetPath);
+
+      if (!copyError) {
+        await supabase.rpc("admin_update_sku_photo", { p_sku_id: skuId, p_photo_path: targetPath });
+      }
+    }
+  }
+
   revalidatePath("/");
   revalidatePath("/sku");
   revalidatePath("/reports");
@@ -84,6 +137,7 @@ export async function updateSkuAction(input: z.input<typeof skuSchema>) {
     p_sku_code: parsed.data.skuCode,
     p_name: parsed.data.productName,
     p_variant: parsed.data.variant || "",
+    p_price: parsed.data.price,
     p_low_stock_qty: parsed.data.lowStockQty,
     p_max_stock_qty: parsed.data.maxStockQty,
   });
@@ -93,6 +147,92 @@ export async function updateSkuAction(input: z.input<typeof skuSchema>) {
   revalidatePath("/sku");
   revalidatePath("/reports");
   return { ok: true };
+}
+
+export async function createVariationGroupAction(formData: FormData) {
+  const membership = await requireMembership();
+  if (membership.role !== "admin") return { ok: false, error: "Admin access required." };
+
+  const payload = formData.get("payload");
+  if (typeof payload !== "string") return { ok: false, error: "Enter valid variation details." };
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(payload);
+  } catch {
+    return { ok: false, error: "Enter valid variation details." };
+  }
+
+  const parsed = variationGroupSchema.safeParse(raw);
+  if (!parsed.success) return { ok: false, error: "Enter valid variation details." };
+  if (hasDuplicate(parsed.data.items.map((item) => item.name))) return { ok: false, error: "Variation item names must be unique." };
+  if (hasDuplicate(parsed.data.items.map((item) => item.skuCode))) return { ok: false, error: "SKU IDs must be unique." };
+
+  if (parsed.data.addVariationImages) {
+    for (const item of parsed.data.items) {
+      const photo = formData.get(`photo:${item.clientId}`);
+      if (!(photo instanceof File)) return { ok: false, error: `Add a photo for ${item.name}.` };
+      const photoError = validatePhoto(photo);
+      if (photoError) return { ok: false, error: `${item.name}: ${photoError}` };
+    }
+  }
+
+  const supabase = await createClient();
+  const whatsapp = normalizeWhatsAppNumber(parsed.data.country, parsed.data.phoneRaw);
+  const { data: groupId, error: groupError } = await supabase.rpc("admin_create_sku_variation_group", {
+    p_organization_id: membership.organization_id,
+    p_product_name: parsed.data.productName,
+    p_variation_name: parsed.data.variationName,
+    p_add_variation_images: parsed.data.addVariationImages,
+  });
+
+  if (groupError || !groupId) return { ok: false, error: groupError?.message ?? "Variation group creation failed." };
+
+  for (const item of parsed.data.items) {
+    const { data: skuId, error } = await supabase.rpc("admin_create_sku", {
+      p_organization_id: membership.organization_id,
+      p_supplier_name: parsed.data.supplierName,
+      p_contact_name: parsed.data.contactName || "",
+      p_country: parsed.data.country,
+      p_phone_raw: parsed.data.phoneRaw,
+      p_whatsapp_number: whatsapp,
+      p_sku_code: item.skuCode,
+      p_name: parsed.data.productName,
+      p_variant: item.name,
+      p_price: item.price,
+      p_low_stock_qty: item.lowStockQty,
+      p_max_stock_qty: item.maxStockQty,
+      p_opening_stock: item.openingStock,
+      p_variation_group_id: groupId,
+    });
+
+    if (error || !skuId) return { ok: false, error: error?.message ?? `SKU creation failed for ${item.name}.` };
+
+    const photo = formData.get(`photo:${item.clientId}`);
+    if (photo instanceof File && photo.size > 0) {
+      const extension = extensionForPhoto(photo);
+      if (!extension) return { ok: false, error: `${item.name}: Unsupported photo type.` };
+
+      const path = `${membership.organization_id}/${skuId}/${crypto.randomUUID()}.${extension}`;
+      const { error: uploadError } = await supabase.storage.from(SKU_PHOTOS_BUCKET).upload(path, photo, {
+        contentType: photo.type,
+        upsert: false,
+      });
+
+      if (uploadError) return { ok: false, error: `${item.name}: ${uploadError.message}` };
+
+      const { error: photoError } = await supabase.rpc("admin_update_sku_photo", { p_sku_id: skuId, p_photo_path: path });
+      if (photoError) {
+        await supabase.storage.from(SKU_PHOTOS_BUCKET).remove([path]);
+        return { ok: false, error: `${item.name}: ${photoError.message}` };
+      }
+    }
+  }
+
+  revalidatePath("/");
+  revalidatePath("/sku");
+  revalidatePath("/reports");
+  return { ok: true, variationGroupId: groupId };
 }
 
 export async function archiveSkuAction(skuId: string) {
