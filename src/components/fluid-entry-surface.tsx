@@ -13,7 +13,7 @@ import { motion, useReducedMotion, type HTMLMotionProps } from "motion/react";
 
 import { cn } from "@/lib/utils";
 
-const MORPH_EASE = [0.22, 1, 0.36, 1] as const;
+const MORPH_EASE = [0.16, 1, 0.3, 1] as const;
 
 interface FluidEntrySurfaceProps extends Omit<ComponentPropsWithoutRef<"div">, "children"> {
   children: ReactNode;

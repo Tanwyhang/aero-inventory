@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { startTransition, useCallback, useEffect, useMemo, useOptimistic } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, Box, Eye, Package, RotateCcw } from "lucide-react";
+import { BarChart3, Box, Eye, Handshake, Package, RotateCcw } from "lucide-react";
 import { motion } from "motion/react";
 
 import aeroLogo from "../../design/logoword.png";
@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 const navItems = [
   { label: "Stock", href: "/", icon: Box, key: "stock" },
+  { label: "Partner", href: "/partner-share", icon: Handshake, key: "partner" },
   { label: "Restock", href: "/restock", icon: RotateCcw, key: "restock" },
   { label: "SKUs", href: "/sku", icon: Package, key: "skus" },
   { label: "Reports", href: "/reports", icon: BarChart3, key: "reports" },
@@ -26,7 +27,7 @@ export function AppSidebar({
   onToggleStaffView,
   restockCount = 0,
 }: {
-  active: "stock" | "restock" | "skus" | "reports";
+  active: "stock" | "partner" | "restock" | "skus" | "reports";
   role?: "admin" | "staff";
   showStaffToggle?: boolean;
   isViewingAsStaff?: boolean;
@@ -35,7 +36,7 @@ export function AppSidebar({
 }) {
   const router = useRouter();
   const [optimisticActive, setOptimisticActive] = useOptimistic(active, (_current, next: NavKey) => next);
-  const visibleNavItems = useMemo(() => (role === "admin" ? navItems : navItems.filter((item) => item.key === "stock")), [role]);
+  const visibleNavItems = useMemo(() => (role === "admin" ? navItems : navItems.filter((item) => item.key === "stock" || item.key === "partner")), [role]);
 
   const navigateOptimistically = useCallback((item: (typeof navItems)[number]) => {
     startTransition(() => {
@@ -66,7 +67,8 @@ export function AppSidebar({
   }, [navigateOptimistically, optimisticActive, visibleNavItems]);
 
   return (
-    <aside className="flex border-b border-border bg-white px-4 py-5 lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:h-screen lg:w-[242px] lg:flex-col lg:border-b-0 lg:border-r">
+    <>
+    <aside className="hidden border-b border-border bg-white px-4 py-5 lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:h-screen lg:w-[242px] lg:flex-col lg:border-b-0 lg:border-r">
       <div className="hidden w-full flex-col items-center gap-4 pt-6 lg:flex">
         <Image src={aeroLogo} alt="Aero" className="h-auto w-32" priority />
       </div>
@@ -97,7 +99,7 @@ export function AppSidebar({
               {item.key === "restock" && restockCount > 0 ? (
                 <span className={cn(
                   "relative z-10 ml-auto grid min-w-6 place-items-center rounded-full px-2 py-0.5 text-xs font-black",
-                  optimisticActive === item.key ? "bg-lime text-black" : "bg-orange text-white",
+                  optimisticActive === item.key ? "bg-lime text-black" : "bg-black text-lime",
                 )}>
                   {restockCount}
                 </span>
@@ -120,5 +122,43 @@ export function AppSidebar({
         </div>
       ) : null}
     </aside>
+    <nav className="fixed inset-x-3 bottom-3 z-40 flex gap-1 rounded-3xl border border-border bg-white/95 p-1.5 shadow-2xl shadow-black/15 backdrop-blur-xl lg:hidden">
+      {visibleNavItems.map((item) => {
+        const Icon = item.icon;
+
+        return (
+          <button
+            key={item.label}
+            type="button"
+            onClick={() => navigateOptimistically(item)}
+            className={cn(
+              "relative flex min-h-14 flex-1 flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl px-2 text-[11px] font-black transition",
+              optimisticActive === item.key ? "text-lime" : "text-zinc-600",
+            )}
+          >
+            {optimisticActive === item.key ? (
+              <motion.span
+                layoutId="mobile-nav-active-pill"
+                className="absolute inset-0 rounded-2xl bg-black"
+                transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
+              />
+            ) : null}
+            <span className="relative z-10">
+              <Icon className="size-5 stroke-[2.2]" />
+              {item.key === "restock" && restockCount > 0 ? (
+                <span className={cn(
+                  "absolute -right-2 -top-2 grid min-w-5 place-items-center rounded-full px-1 text-[10px] font-black",
+                  optimisticActive === item.key ? "bg-lime text-black" : "bg-black text-lime",
+                )}>
+                  {restockCount}
+                </span>
+              ) : null}
+            </span>
+            <span className="relative z-10 truncate">{item.label}</span>
+          </button>
+        );
+      })}
+    </nav>
+    </>
   );
 }

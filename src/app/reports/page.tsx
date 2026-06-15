@@ -180,10 +180,10 @@ export default async function ReportsPage() {
   });
 
   return (
-    <main className="min-h-screen bg-white text-black">
+    <main className="min-h-screen bg-white pb-24 text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
         <AppSidebar active="reports" role="admin" restockCount={restockRows.length} />
-        <section className="px-5 py-8 sm:px-8 lg:px-7 xl:px-8">
+        <section className="px-4 py-5 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <h1 className="text-4xl font-black tracking-[-0.055em] sm:text-[44px]">Reports</h1>
           <p className="mt-2 text-base font-semibold text-zinc-500">Operational stock, restock, and audit trail.</p>
 

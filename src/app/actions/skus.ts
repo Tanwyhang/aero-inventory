@@ -14,6 +14,7 @@ const skuSchema = z.object({
   productName: z.string().trim().min(1).max(160),
   variant: z.string().trim().max(80).optional(),
   skuCode: z.string().trim().min(1).max(80),
+  categoryName: z.string().trim().max(120).optional(),
   supplierName: z.string().trim().min(1).max(160),
   contactName: z.string().trim().max(120).optional(),
   country: z.enum(["MY", "TH"]),
@@ -39,6 +40,7 @@ const variationGroupSchema = z.object({
   productName: z.string().trim().min(1).max(160),
   variationName: z.string().trim().min(1).max(80),
   addVariationImages: z.boolean(),
+  categoryName: z.string().trim().max(120).optional(),
   supplierName: z.string().trim().min(1).max(160),
   contactName: z.string().trim().max(120).optional(),
   country: z.enum(["MY", "TH"]),
@@ -93,6 +95,7 @@ export async function createSkuAction(input: z.input<typeof skuSchema>) {
     p_low_stock_qty: parsed.data.lowStockQty,
     p_max_stock_qty: parsed.data.maxStockQty,
     p_opening_stock: parsed.data.openingStock ?? 0,
+    p_category_name: parsed.data.categoryName || null,
   });
 
   if (error) return { ok: false, error: error.message };
@@ -140,6 +143,7 @@ export async function updateSkuAction(input: z.input<typeof skuSchema>) {
     p_price: parsed.data.price,
     p_low_stock_qty: parsed.data.lowStockQty,
     p_max_stock_qty: parsed.data.maxStockQty,
+    p_category_name: parsed.data.categoryName || null,
   });
 
   if (error) return { ok: false, error: error.message };
@@ -204,6 +208,7 @@ export async function createVariationGroupAction(formData: FormData) {
       p_max_stock_qty: item.maxStockQty,
       p_opening_stock: item.openingStock,
       p_variation_group_id: groupId,
+      p_category_name: parsed.data.categoryName || null,
     });
 
     if (error || !skuId) return { ok: false, error: error?.message ?? `SKU creation failed for ${item.name}.` };

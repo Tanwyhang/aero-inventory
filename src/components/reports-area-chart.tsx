@@ -26,8 +26,8 @@ export function ReportsAreaChart({ data }: { data: ReportsAreaDatum[] }) {
         <div className="rounded-full bg-lime px-4 py-2 text-sm font-black text-black">{total} units moved</div>
       </div>
 
-      <div className="mt-6 h-[280px] min-w-0 w-full">
-        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={280}>
+      <div className="mt-6 h-[220px] min-w-0 w-full sm:h-[280px]">
+        <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={220}>
           <AreaChart data={data} margin={{ left: 8, right: 8, top: 12, bottom: 0 }}>
             <CartesianGrid vertical={false} stroke="rgba(24,24,27,0.1)" />
             <XAxis dataKey="month" tickLine={false} axisLine={false} tickMargin={10} tick={{ fill: "#71717a", fontSize: 12, fontWeight: 700 }} />

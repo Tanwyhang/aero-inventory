@@ -1,15 +1,17 @@
 "use client";
 
-import { FormEvent, startTransition, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ImageIcon, Pencil, Plus, Save, Trash2, X } from "lucide-react";
 
 import { archiveSkuAction, createSkuAction, createVariationGroupAction, removeSkuPhotoAction, updateSkuAction, uploadSkuPhotoAction } from "@/app/actions/skus";
 import { AppSidebar } from "@/components/app-sidebar";
+import { ConfirmSlideSheet, type ConfirmationRecord } from "@/components/confirm-slide-sheet";
 import { FluidEntrySurface } from "@/components/fluid-entry-surface";
 import { StoreIdentityEditor } from "@/components/store-identity-editor";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import type { AdminSkuManagerRow, Membership } from "@/types/database";
 
 type Draft = {
@@ -17,6 +19,7 @@ type Draft = {
   productName: string;
   variant: string;
   skuCode: string;
+  categoryName: string;
   supplierName: string;
   contactName: string;
   country: "MY" | "TH";
@@ -47,6 +50,7 @@ type VariationDraft = {
   productName: string;
   variationName: string;
   addVariationImages: boolean;
+  categoryName: string;
   supplierName: string;
   contactName: string;
   country: "MY" | "TH";
@@ -54,10 +58,18 @@ type VariationDraft = {
   items: VariationItemDraft[];
 };
 
+type PendingConfirmation = {
+  title: string;
+  description: string;
+  records: ConfirmationRecord[];
+  onConfirm: () => Promise<void>;
+};
+
 const demoDraft: Draft = {
   productName: "Demo Pet Shampoo",
   variant: "500ml",
   skuCode: "DEMO-SHAMPOO-500ML",
+  categoryName: "Grooming",
   supplierName: "Demo Pet Supply",
   contactName: "Maya",
   country: "MY",
@@ -92,6 +104,7 @@ function newVariationDraft(): VariationDraft {
     productName: "Demo Cat Food",
     variationName: "Flavor",
     addVariationImages: true,
+    categoryName: "Cat Food",
     supplierName: "Demo Pet Supply",
     contactName: "Maya",
     country: "MY",
@@ -161,6 +174,8 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
   const [isPhotoPending, setIsPhotoPending] = useState(false);
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
   const isEditing = Boolean(draft.skuId);
   const selectedPhotoUrl = useMemo(() => (photoFile ? URL.createObjectURL(photoFile) : null), [photoFile]);
   const tableEntries = useMemo(() => {
@@ -234,6 +249,7 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
     setDraft({
       ...demoDraft,
       skuCode: `DEMO-${Date.now().toString().slice(-5)}`,
+      categoryName: demoDraft.categoryName,
       photoUrl: demoPhotoRow?.photo_url ?? null,
       photoPath: demoPhotoRow?.photo_path ?? null,
       demoPhotoPath: demoPhotoRow?.photo_path ?? undefined,
@@ -251,6 +267,7 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
       productName: row.product_name,
       variant: row.variant ?? "",
       skuCode: row.sku_code,
+      categoryName: row.category_name ?? "",
       supplierName: row.supplier_name ?? "",
       contactName: row.contact_name ?? "",
       country: row.country === "TH" ? "TH" : "MY",
@@ -270,127 +287,214 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
 
   function handleVariationSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setIsPending(true);
     setError(null);
+    setConfirmError(null);
 
     if (variationDraft.addVariationImages && variationDraft.items.some((item) => !item.photoFile)) {
-      setIsPending(false);
       setError("Add a photo for every variation item, or turn off variation images.");
       return;
     }
 
-    startTransition(async () => {
-      const formData = new FormData();
-      formData.set("payload", JSON.stringify({
-        productName: variationDraft.productName,
-        variationName: variationDraft.variationName,
-        addVariationImages: variationDraft.addVariationImages,
-        supplierName: variationDraft.supplierName,
-        contactName: variationDraft.contactName,
-        country: variationDraft.country,
-        phoneRaw: variationDraft.phoneRaw,
-        items: variationDraft.items.map((item) => ({
-          clientId: item.clientId,
-          name: item.name,
-          skuCode: item.skuCode,
-          price: item.price,
-          lowStockQty: item.lowStockQty,
-          maxStockQty: item.maxStockQty,
-          openingStock: item.openingStock,
-        })),
-      }));
-
-      if (variationDraft.addVariationImages) {
-        for (const item of variationDraft.items) {
-          if (item.photoFile) formData.set(`photo:${item.clientId}`, item.photoFile);
-        }
-      }
-
-      const result = await createVariationGroupAction(formData);
-      setIsPending(false);
-
-      if (result.ok !== true) {
-        setError(result.error ?? "Variation group save failed.");
-        return;
-      }
-
-      setIsOpen(false);
-      setCreateMode("single");
-      setVariationDraft(newVariationDraft());
-      router.refresh();
+    setConfirmation({
+      title: "Confirm Variation Bundle",
+      description: "This will create a variation group and record every item as a real inventory SKU.",
+      records: [
+        { label: "Product", value: variationDraft.productName },
+        { label: "Variation", value: variationDraft.variationName },
+        { label: "Category", value: variationDraft.categoryName },
+        { label: "Items", value: variationDraft.items.length },
+        { label: "Supplier", value: variationDraft.supplierName },
+        { label: "Contact", value: variationDraft.contactName || variationDraft.phoneRaw },
+        { label: "Images", value: variationDraft.addVariationImages ? "Required per item" : "Not required" },
+        { label: "Opening Stock", value: variationDraft.items.reduce((sum, item) => sum + Number(item.openingStock || 0), 0) },
+      ],
+      onConfirm: executeVariationSave,
     });
+  }
+
+  async function executeVariationSave() {
+    setIsPending(true);
+    setConfirmError(null);
+    const formData = new FormData();
+    formData.set("payload", JSON.stringify({
+      productName: variationDraft.productName,
+      variationName: variationDraft.variationName,
+      addVariationImages: variationDraft.addVariationImages,
+      categoryName: variationDraft.categoryName,
+      supplierName: variationDraft.supplierName,
+      contactName: variationDraft.contactName,
+      country: variationDraft.country,
+      phoneRaw: variationDraft.phoneRaw,
+      items: variationDraft.items.map((item) => ({
+        clientId: item.clientId,
+        name: item.name,
+        skuCode: item.skuCode,
+        price: item.price,
+        lowStockQty: item.lowStockQty,
+        maxStockQty: item.maxStockQty,
+        openingStock: item.openingStock,
+      })),
+    }));
+
+    if (variationDraft.addVariationImages) {
+      for (const item of variationDraft.items) {
+        if (item.photoFile) formData.set(`photo:${item.clientId}`, item.photoFile);
+      }
+    }
+
+    const result = await createVariationGroupAction(formData);
+    setIsPending(false);
+
+    if (result.ok !== true) {
+      const message = result.error ?? "Variation group save failed.";
+      setConfirmError(message);
+      toast.error("Variation save failed", { description: message });
+      throw new Error(message);
+    }
+
+    toast.success("Variation SKUs recorded", { description: `${variationDraft.productName}: ${variationDraft.items.length} items created.` });
+    setConfirmation(null);
+    setIsOpen(false);
+    setCreateMode("single");
+    setVariationDraft(newVariationDraft());
+    router.refresh();
   }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setIsPending(true);
     setError(null);
+    setConfirmError(null);
 
-    startTransition(async () => {
-      const result = isEditing ? await updateSkuAction(draft) : await createSkuAction(draft);
-
-      if (result.ok !== true) {
-        setIsPending(false);
-        setError(result.error ?? "SKU save failed.");
-        return;
-      }
-
-      const createdSkuId = "skuId" in result && typeof result.skuId === "string" ? result.skuId : undefined;
-      const skuId = draft.skuId ?? createdSkuId;
-
-      if (photoFile && skuId) {
-        const formData = new FormData();
-        formData.set("skuId", skuId);
-        formData.set("photo", photoFile);
-        const photoResult = await uploadSkuPhotoAction(formData);
-
-        if (!photoResult.ok) {
-          setIsPending(false);
-          setError(photoResult.error ?? "SKU saved, but photo upload failed.");
-          return;
-        }
-      }
-
-      setIsPending(false);
-
-      setIsOpen(false);
-      setDraft({ ...demoDraft });
-      setPhotoFile(null);
-      router.refresh();
+    setConfirmation({
+      title: isEditing ? "Confirm SKU Update" : "Confirm New SKU",
+      description: isEditing ? "This will update SKU details and write an audit record." : "This will create a SKU, inventory row, and opening stock record.",
+      records: [
+        { label: "Product", value: draft.productName },
+        { label: "Variant", value: draft.variant },
+        { label: "SKU", value: draft.skuCode },
+        { label: "Category", value: draft.categoryName },
+        { label: "Price", value: formatPrice(draft.price) },
+        { label: "Supplier", value: draft.supplierName },
+        { label: "Contact", value: draft.contactName || draft.phoneRaw },
+        { label: "Low Alert", value: draft.lowStockQty },
+        { label: "Full Stock", value: draft.maxStockQty },
+        { label: isEditing ? "Photo Change" : "Opening Stock", value: isEditing ? (photoFile ? photoFile.name : "No photo change") : draft.openingStock },
+      ],
+      onConfirm: executeSingleSkuSave,
     });
   }
 
-  function archiveSku(skuId: string) {
+  async function executeSingleSkuSave() {
     setIsPending(true);
-    startTransition(async () => {
-      const result = await archiveSkuAction(skuId);
+    setConfirmError(null);
+    const result = isEditing ? await updateSkuAction(draft) : await createSkuAction(draft);
+
+    if (result.ok !== true) {
       setIsPending(false);
-      if (!result.ok) setError(result.error ?? "Archive failed.");
-      else router.refresh();
+      const message = result.error ?? "SKU save failed.";
+      setConfirmError(message);
+      toast.error("SKU save failed", { description: message });
+      throw new Error(message);
+    }
+
+    const createdSkuId = "skuId" in result && typeof result.skuId === "string" ? result.skuId : undefined;
+    const skuId = draft.skuId ?? createdSkuId;
+
+    if (photoFile && skuId) {
+      const formData = new FormData();
+      formData.set("skuId", skuId);
+      formData.set("photo", photoFile);
+      const photoResult = await uploadSkuPhotoAction(formData);
+
+      if (!photoResult.ok) {
+        setIsPending(false);
+        const message = photoResult.error ?? "SKU saved, but photo upload failed.";
+        setConfirmError(message);
+        toast.error("Photo upload failed", { description: message });
+        throw new Error(message);
+      }
+    }
+
+    setIsPending(false);
+
+    toast.success(isEditing ? "SKU update recorded" : "SKU created", { description: `${draft.productName} (${draft.skuCode})` });
+    setConfirmation(null);
+    setIsOpen(false);
+    setDraft({ ...demoDraft });
+    setPhotoFile(null);
+    router.refresh();
+  }
+
+  function archiveSku(row: AdminSkuManagerRow) {
+    setConfirmError(null);
+    setConfirmation({
+      title: "Confirm SKU Archive",
+      description: "This will archive the SKU and remove it from active inventory views.",
+      records: [
+        { label: "Product", value: row.product_name },
+        { label: "Variant", value: row.variant },
+        { label: "SKU", value: row.sku_code },
+        { label: "Current Stock", value: row.quantity },
+        { label: "Supplier", value: row.supplier_name },
+      ],
+      onConfirm: () => executeArchiveSku(row.sku_id),
     });
+  }
+
+  async function executeArchiveSku(skuId: string) {
+    setIsPending(true);
+    setConfirmError(null);
+    const result = await archiveSkuAction(skuId);
+    setIsPending(false);
+    if (!result.ok) {
+      const message = result.error ?? "Archive failed.";
+      setConfirmError(message);
+      toast.error("Archive failed", { description: message });
+      throw new Error(message);
+    }
+    toast.success("SKU archived", { description: "The SKU was removed from active inventory." });
+    setConfirmation(null);
+    router.refresh();
   }
 
   function removePhoto() {
     if (!draft.skuId) return;
-    setIsPhotoPending(true);
-    setError(null);
-    startTransition(async () => {
-      const result = await removeSkuPhotoAction(draft.skuId ?? "");
-      setIsPhotoPending(false);
-      if (!result.ok) {
-        setError(result.error ?? "Photo removal failed.");
-        return;
-      }
-      setIsOpen(false);
-      router.refresh();
+    setConfirmError(null);
+    setConfirmation({
+      title: "Confirm Photo Removal",
+      description: "This will clear the SKU photo and record the SKU update.",
+      records: [
+        { label: "Product", value: draft.productName },
+        { label: "SKU", value: draft.skuCode },
+        { label: "Photo", value: draft.photoPath ? "Remove current photo" : "No current photo" },
+      ],
+      onConfirm: executeRemovePhoto,
     });
   }
 
+  async function executeRemovePhoto() {
+    if (!draft.skuId) return;
+    setIsPhotoPending(true);
+    setConfirmError(null);
+    const result = await removeSkuPhotoAction(draft.skuId ?? "");
+    setIsPhotoPending(false);
+    if (!result.ok) {
+      const message = result.error ?? "Photo removal failed.";
+      setConfirmError(message);
+      toast.error("Photo removal failed", { description: message });
+      throw new Error(message);
+    }
+    toast.success("Photo removed", { description: `${draft.productName} photo was cleared.` });
+    setConfirmation(null);
+    setIsOpen(false);
+    router.refresh();
+  }
+
   return (
-    <main className="min-h-screen bg-white text-black">
+    <main className="min-h-screen bg-white pb-24 text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
         <AppSidebar active="skus" role="admin" restockCount={restockCount} />
-        <section className="px-5 py-8 sm:px-8 lg:px-7 xl:px-8">
+        <section className="px-4 py-5 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <h1 className="text-4xl font-black tracking-[-0.055em] sm:text-[44px]">SKUs</h1>
@@ -410,7 +514,72 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
 
           {error ? <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div> : null}
 
-          <FluidEntrySurface className="mt-8 rounded-3xl border border-white/50 bg-white/60 backdrop-blur-2xl">
+          <div className="mt-6 grid gap-3 md:hidden">
+            {tableEntries.map((entry) => {
+              if (entry.type === "group") {
+                return (
+                  <div key={entry.id} className="sticky top-0 z-10 rounded-2xl border border-lime/40 bg-lime/90 p-3 shadow-sm backdrop-blur-xl">
+                    <div className="flex items-center justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-black tracking-[-0.04em]">{entry.productName}</div>
+                        <div className="mt-0.5 text-xs font-bold text-black/60">{entry.variationName} · {entry.count} SKUs</div>
+                      </div>
+                      <div className="shrink-0 rounded-full bg-black px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">Bundle</div>
+                    </div>
+                  </div>
+                );
+              }
+
+              const row = entry.row;
+
+              return (
+                <FluidEntrySurface key={row.sku_id} className="rounded-3xl border border-white/50 bg-white/70 backdrop-blur-2xl" contentClassName="p-3">
+                  <div className="flex items-start gap-3">
+                    <div className="grid size-[68px] shrink-0 place-items-center overflow-hidden rounded-2xl border border-white bg-lime text-xl font-black ring-1 ring-black/5">
+                      {row.photo_url ? <Image src={row.photo_url} alt={row.product_name} width={64} height={64} className="size-full object-cover" /> : row.product_name.slice(0, 1)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="line-clamp-2 text-lg font-black leading-[1.05] tracking-[-0.05em]">{row.product_name}</div>
+                      <div className="mt-1 flex flex-wrap gap-1 text-xs font-bold text-zinc-500">
+                        {row.variation_name ? <span className="rounded-full bg-lime/25 px-2 py-0.5 text-black">{row.variation_name}</span> : null}
+                        {row.variant ? <span className="rounded-full bg-zinc-100 px-2 py-0.5">{row.variant}</span> : null}
+                        <span className="rounded-full bg-zinc-100 px-2 py-0.5">{row.sku_code}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 rounded-2xl border border-border bg-zinc-50 px-3 py-2.5">
+                    <div className="flex items-center justify-between gap-3 border-b border-border pb-2.5">
+                      <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-400">Price</div>
+                      <div className="text-base font-black tracking-[-0.04em]">{formatPrice(row.price)}</div>
+                    </div>
+                    <div className="flex items-center justify-between gap-3 border-b border-border py-2.5">
+                      <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-400">Stock</div>
+                      <div className="text-base font-black tracking-[-0.04em]">{row.quantity} / {row.max_stock_qty}</div>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 pt-2.5">
+                      <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-400">Supplier</div>
+                      <div className="min-w-0 text-right">
+                        <div className="truncate text-sm font-black">{row.supplier_name}</div>
+                        <div className="mt-0.5 text-xs font-bold text-zinc-500">{row.contact_name || "No contact"} · {row.country} {row.phone_raw}</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2">
+                    <Button type="button" variant="outline" className="h-12 rounded-2xl border-border bg-white px-4 text-sm font-bold hover:bg-white" onClick={() => openEdit(row)}>
+                      <Pencil className="size-4" />
+                      Edit
+                    </Button>
+                    <Button type="button" disabled={isPending} className="h-12 rounded-2xl bg-red-500 px-4 text-sm font-bold text-white hover:bg-red-500" onClick={() => archiveSku(row)}>
+                      <Trash2 className="size-4" />
+                      Archive
+                    </Button>
+                  </div>
+                </FluidEntrySurface>
+              );
+            })}
+          </div>
+
+          <FluidEntrySurface className="mt-8 hidden rounded-3xl border border-white/50 bg-white/60 backdrop-blur-2xl md:block">
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1300px] border-collapse text-left">
                 <thead>
@@ -472,7 +641,7 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
                               <Pencil className="size-4" />
                               Edit
                             </Button>
-                            <Button type="button" disabled={isPending} className="h-10 rounded-md bg-red-500 px-4 text-sm font-bold text-white hover:bg-red-500" onClick={() => archiveSku(row.sku_id)}>
+                            <Button type="button" disabled={isPending} className="h-10 rounded-md bg-red-500 px-4 text-sm font-bold text-white hover:bg-red-500" onClick={() => archiveSku(row)}>
                               <Trash2 className="size-4" />
                               Archive
                             </Button>
@@ -489,9 +658,9 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
       </div>
 
       {isOpen ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-8" onClick={() => setIsOpen(false)}>
+        <div className="fixed inset-0 z-50 grid items-end bg-black/45 p-0 sm:place-items-center sm:px-4 sm:py-8" onClick={() => setIsOpen(false)}>
           <div className="w-full max-w-6xl" onClick={(event) => event.stopPropagation()}>
-            <FluidEntrySurface className="max-h-[90vh] max-w-6xl rounded-3xl border border-white/50 bg-white/85 backdrop-blur-2xl" contentClassName="max-h-[90vh] overflow-y-auto p-5 sm:p-6">
+            <FluidEntrySurface className="max-h-[92dvh] max-w-6xl rounded-t-3xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[92dvh] overflow-y-auto p-5 sm:p-6">
               <form onSubmit={isEditing || createMode === "single" ? handleSubmit : handleVariationSubmit}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -526,6 +695,7 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
                     </div>
                     <Field label="Name"><input required className={inputClassName} value={draft.productName} onChange={(event) => updateDraft("productName", event.target.value)} placeholder="Dog Food - Chicken" /></Field>
                     <Field label="Variant"><input className={inputClassName} value={draft.variant} onChange={(event) => updateDraft("variant", event.target.value)} placeholder="2kg, Medium, 10L" /></Field>
+                    <Field label="Category"><input className={inputClassName} value={draft.categoryName} onChange={(event) => updateDraft("categoryName", event.target.value)} placeholder="Food, Litter, Grooming" /></Field>
                     <div className="lg:col-span-2">
                       <Field label="SKU ID"><input required className={inputClassName} value={draft.skuCode} onChange={(event) => updateDraft("skuCode", event.target.value.toUpperCase())} placeholder="DF-CH-2KG" /></Field>
                     </div>
@@ -551,6 +721,7 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
                     <FormSection title="Variation Bundle">
                       <Field label="Product Name"><input required className={inputClassName} value={variationDraft.productName} onChange={(event) => updateVariationDraft("productName", event.target.value)} placeholder="Cat Food Pouch x28" /></Field>
                       <Field label="Variation Name"><input required className={inputClassName} value={variationDraft.variationName} onChange={(event) => updateVariationDraft("variationName", event.target.value)} placeholder="Flavor, Size, Color, Weight" /></Field>
+                      <Field label="Category"><input className={inputClassName} value={variationDraft.categoryName} onChange={(event) => updateVariationDraft("categoryName", event.target.value)} placeholder="Cat Food" /></Field>
                       <label className="flex items-center justify-between gap-4 rounded-xl border-2 border-zinc-300 bg-white px-4 py-3 text-sm font-black tracking-[-0.02em] text-zinc-700 lg:col-span-2">
                         Add Variation Images
                         <input type="checkbox" checked={variationDraft.addVariationImages} onChange={(event) => updateVariationDraft("addVariationImages", event.target.checked)} className="size-5 accent-lime" />
@@ -612,7 +783,7 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
                 <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="h-12 rounded-lg border-border bg-white px-6 text-base font-semibold text-black hover:bg-white">Cancel</Button>
                 <Button disabled={isPending} className="h-12 rounded-lg bg-lime px-6 text-base font-bold text-black hover:bg-lime disabled:opacity-60">
                   {isEditing ? <Save className="size-5" /> : <Plus className="size-5" />}
-                  {isPending ? "Saving..." : isEditing ? "Save SKU" : createMode === "variation" ? "Create Variation SKUs" : "Add SKU"}
+                  {isPending ? "Saving..." : isEditing ? "Review SKU" : createMode === "variation" ? "Review Variation SKUs" : "Review SKU"}
                 </Button>
               </div>
               </form>
@@ -620,6 +791,16 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
             <p className="mt-3 text-center text-xs font-bold text-white/80">Click anywhere to close</p>
           </div>
         </div>
+      ) : null}
+      {confirmation ? (
+        <ConfirmSlideSheet
+          title={confirmation.title}
+          description={confirmation.description}
+          records={confirmation.records}
+          error={confirmError}
+          onCancel={() => setConfirmation(null)}
+          onConfirm={confirmation.onConfirm}
+        />
       ) : null}
     </main>
   );

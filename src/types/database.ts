@@ -9,6 +9,8 @@ export type StockAdjustmentReason =
   | "Excel Import"
   | "Warehouse Transfer";
 
+export type PartnerShareStatus = "draft" | "confirmed" | "sent" | "completed";
+
 export type Database = {
   public: {
     Tables: {
@@ -128,6 +130,45 @@ export type Database = {
           created_at: string;
         };
       };
+      product_categories: {
+        Row: {
+          id: string;
+          organization_id: string;
+          name: string;
+          archived_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      partners: {
+        Row: PartnerRow;
+      };
+      partner_share_sheets: {
+        Row: {
+          id: string;
+          organization_id: string;
+          partner_id: string;
+          location_id: string;
+          source_shop_name: string;
+          share_date: string;
+          status: PartnerShareStatus;
+          created_by: string | null;
+          updated_by: string | null;
+          confirmed_by: string | null;
+          sent_by: string | null;
+          completed_by: string | null;
+          stock_deducted_by: string | null;
+          confirmed_at: string | null;
+          sent_at: string | null;
+          completed_at: string | null;
+          stock_deducted_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      partner_share_items: {
+        Row: PartnerShareItemRow;
+      };
     };
     Functions: {
       claim_bootstrap_admin: {
@@ -193,6 +234,54 @@ export type Database = {
         Args: { p_sku_id: string; p_photo_path: string | null };
         Returns: string;
       };
+      admin_upsert_product_category: {
+        Args: { p_organization_id: string; p_name: string };
+        Returns: string;
+      };
+      get_partner_share_page_data: {
+        Args: { p_organization_id: string };
+        Returns: Json;
+      };
+      get_partner_share_sheet_detail: {
+        Args: { p_sheet_id: string };
+        Returns: Json;
+      };
+      admin_create_partner: {
+        Args: { p_organization_id: string; p_name: string; p_contact_name?: string | null; p_phone_raw?: string | null; p_whatsapp_number?: string | null; p_notes?: string | null };
+        Returns: string;
+      };
+      admin_update_partner: {
+        Args: { p_partner_id: string; p_name: string; p_contact_name?: string | null; p_phone_raw?: string | null; p_whatsapp_number?: string | null; p_notes?: string | null };
+        Returns: string;
+      };
+      admin_archive_partner: {
+        Args: { p_partner_id: string };
+        Returns: string;
+      };
+      admin_create_partner_share_sheet: {
+        Args: { p_partner_id: string; p_location_id: string; p_share_date?: string | null };
+        Returns: string;
+      };
+      admin_add_partner_share_item: {
+        Args: { p_sheet_id: string; p_sku_id: string; p_share_qty: number; p_remark?: string | null };
+        Returns: string;
+      };
+      admin_update_partner_share_item: {
+        Args: { p_item_id: string; p_share_qty: number; p_remark?: string | null };
+        Returns: string;
+      };
+      admin_remove_partner_share_item: {
+        Args: { p_item_id: string };
+        Returns: string;
+      };
+      admin_update_partner_share_status: {
+        Args: { p_sheet_id: string; p_status: PartnerShareStatus };
+        Returns: string;
+      };
+      admin_deduct_partner_share_stock: {
+        Args: { p_sheet_id: string };
+        Returns: string;
+      };
     };
     Enums: {
       member_role: "admin" | "staff";
@@ -218,6 +307,7 @@ export type StaffInventoryRow = {
   location_name: string;
   is_low_stock: boolean;
   is_out_of_stock: boolean;
+  category_name: string | null;
 };
 
 export type AdminInventoryRow = StaffInventoryRow & {
@@ -273,4 +363,76 @@ export type AdminSkuManagerRow = {
   country: string | null;
   phone_raw: string | null;
   whatsapp_number: string | null;
+  category_name: string | null;
+};
+
+export type ProductCategoryRow = {
+  id: string;
+  name: string;
+};
+
+export type PartnerRow = {
+  id: string;
+  name: string;
+  contact_name: string | null;
+  phone_raw: string | null;
+  whatsapp_number: string | null;
+  notes: string | null;
+  archived_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PartnerShareSheetSummary = {
+  id: string;
+  partner_id: string;
+  partner_name: string;
+  location_id: string;
+  location_name: string;
+  source_shop_name: string;
+  share_date: string;
+  status: PartnerShareStatus;
+  item_count: number;
+  total_share_qty: number;
+  prepared_by_name: string | null;
+  approved_by_name: string | null;
+  sent_by_name: string | null;
+  completed_by_name: string | null;
+  stock_deducted_by_name: string | null;
+  confirmed_at: string | null;
+  sent_at: string | null;
+  completed_at: string | null;
+  stock_deducted_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PartnerShareItemRow = {
+  id: string;
+  sheet_id: string;
+  sku_id: string;
+  location_id: string;
+  product_name: string;
+  variant: string | null;
+  sku_code: string;
+  current_stock_snapshot: number;
+  photo_path: string | null;
+  photo_url?: string | null;
+  supplier_name: string | null;
+  category_name: string | null;
+  share_qty: number;
+  remark: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PartnerShareSheetDetail = {
+  sheet: PartnerShareSheetSummary & { organization_id: string };
+  items: PartnerShareItemRow[];
+};
+
+export type PartnerSharePageData = {
+  partners: PartnerRow[];
+  categories: ProductCategoryRow[];
+  sheets: PartnerShareSheetSummary[];
 };

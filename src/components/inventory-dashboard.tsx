@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, startTransition, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import { motion } from "motion/react";
 import {
   ArrowUpDown,
@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  Menu,
   Minus,
   Package,
   Plus,
@@ -24,9 +25,11 @@ import { adjustStockAction } from "@/app/actions/stock";
 import { createRestockRequestAction, updateRestockStatusAction } from "@/app/actions/restock";
 import { signOut } from "@/app/actions/auth";
 import { AppSidebar } from "@/components/app-sidebar";
+import { ConfirmSlideSheet } from "@/components/confirm-slide-sheet";
 import { FluidEntrySurface } from "@/components/fluid-entry-surface";
 import { StoreIdentityEditor } from "@/components/store-identity-editor";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { WhatsAppLink } from "@/components/whatsapp-link";
 import { DEFAULT_STOCK_ADJUSTMENT_REASON, STOCK_ADJUSTMENT_REASONS, type StockAdjustmentReason } from "@/lib/stock-reasons";
 import { cn } from "@/lib/utils";
@@ -43,7 +46,7 @@ export function ProductThumb({ label, photoUrl, eager = false }: { label: string
   const washMask = "linear-gradient(to right, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.25) 54%, transparent 100%)";
 
   return (
-    <div className="relative h-full min-h-[72px] w-32 shrink-0 overflow-hidden bg-white text-xl font-black sm:w-36">
+    <div className="relative h-full min-h-[72px] w-28 shrink-0 overflow-hidden bg-white text-xl font-black sm:w-36">
       {photoUrl ? (
         <>
           <Image
@@ -91,6 +94,12 @@ function stockCardBorder(row: InventoryRow) {
   return "border-border";
 }
 
+function stockStatus(row: InventoryRow) {
+  if (row.is_out_of_stock) return { label: "Out", className: "bg-red-50 text-red-600 ring-red-100" };
+  if (row.is_low_stock) return { label: "Low", className: "bg-orange/10 text-orange ring-orange/15" };
+  return { label: "Good", className: "bg-lime/20 text-black ring-lime/30" };
+}
+
 function AdjustmentDialog({
   row,
   direction,
@@ -105,6 +114,8 @@ function AdjustmentDialog({
   const [reason, setReason] = useState<StockAdjustmentReason>(DEFAULT_STOCK_ADJUSTMENT_REASON);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const signedDelta = direction === "add" ? Number(quantity) : -Number(quantity);
   const nextStock = Number.isFinite(signedDelta) ? row.quantity + signedDelta : row.quantity;
@@ -112,34 +123,42 @@ function AdjustmentDialog({
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setConfirmError(null);
+    setIsConfirming(true);
+  }
+
+  async function confirmStockMovement() {
+    setConfirmError(null);
     setIsPending(true);
-
-    startTransition(async () => {
-      const result = await adjustStockAction({
-        skuId: row.sku_id,
-        locationId: row.location_id,
-        direction,
-        quantity: Number(quantity),
-        reason,
-        note,
-      });
-
-      setIsPending(false);
-
-      if (!result.ok) {
-        setError(result.error ?? "Stock update failed.");
-        return;
-      }
-
-      onClose();
-      router.refresh();
+    const result = await adjustStockAction({
+      skuId: row.sku_id,
+      locationId: row.location_id,
+      direction,
+      quantity: Number(quantity),
+      reason,
+      note,
     });
+
+    setIsPending(false);
+
+    if (!result.ok) {
+      const message = result.error ?? "Stock update failed.";
+      setConfirmError(message);
+      toast.error("Stock update failed", { description: message });
+      throw new Error(message);
+    }
+
+    toast.success("Stock movement recorded", {
+      description: `${row.product_name}: ${direction === "add" ? "+" : "-"}${quantity} (${reason})`,
+    });
+    onClose();
+    router.refresh();
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-8" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid items-end bg-black/45 p-0 sm:place-items-center sm:px-4 sm:py-8" onClick={onClose}>
       <div className="w-full max-w-lg" onClick={(event) => event.stopPropagation()}>
-        <FluidEntrySurface className="max-w-lg rounded-3xl border border-white/50 bg-white/85 backdrop-blur-2xl" contentClassName="p-6">
+        <FluidEntrySurface className="max-h-[92dvh] max-w-lg rounded-t-3xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[92dvh] overflow-y-auto p-5 sm:p-6">
           <form onSubmit={handleSubmit}>
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -176,16 +195,34 @@ function AdjustmentDialog({
             {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div> : null}
           </div>
 
-          <div className="mt-6 flex justify-end gap-3">
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={onClose} className="h-12 rounded-lg bg-white px-6 text-base font-bold hover:bg-white">Cancel</Button>
             <Button disabled={isPending} className="h-12 rounded-lg bg-lime px-6 text-base font-bold text-black hover:bg-lime disabled:opacity-60">
-              {isPending ? "Saving..." : "Save Movement"}
+              Review Movement
             </Button>
           </div>
           </form>
         </FluidEntrySurface>
         <p className="mt-3 text-center text-xs font-bold text-white/80">Click anywhere to close</p>
       </div>
+      {isConfirming ? (
+        <ConfirmSlideSheet
+          title={direction === "add" ? "Confirm Add Stock" : "Confirm Deduct Stock"}
+          description="This stock movement will be written to the audit trail and inventory history."
+          records={[
+            { label: "Product", value: row.product_name },
+            { label: "SKU", value: row.sku_code },
+            { label: "Movement", value: direction === "add" ? `+${quantity}` : `-${quantity}` },
+            { label: "Reason", value: reason },
+            { label: "Before", value: row.quantity },
+            { label: "After", value: Number.isFinite(nextStock) ? nextStock : row.quantity },
+            { label: "Note", value: note },
+          ]}
+          error={confirmError}
+          onCancel={() => setIsConfirming(false)}
+          onConfirm={confirmStockMovement}
+        />
+      ) : null}
     </div>
   );
 }
@@ -195,37 +232,47 @@ function PingDialog({ row, onClose }: { row: InventoryRow; onClose: () => void }
   const [requestedQty, setRequestedQty] = useState("");
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [isConfirming, setIsConfirming] = useState(false);
   const [isPending, setIsPending] = useState(false);
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
+    setConfirmError(null);
+    setIsConfirming(true);
+  }
+
+  async function confirmRestockRequest() {
+    setConfirmError(null);
     setIsPending(true);
-
-    startTransition(async () => {
-      const result = await createRestockRequestAction({
-        skuId: row.sku_id,
-        locationId: row.location_id,
-        requestedQty,
-        note,
-      });
-
-      setIsPending(false);
-
-      if (!result.ok) {
-        setError(result.error ?? "Request failed.");
-        return;
-      }
-
-      onClose();
-      router.refresh();
+    const result = await createRestockRequestAction({
+      skuId: row.sku_id,
+      locationId: row.location_id,
+      requestedQty,
+      note,
     });
+
+    setIsPending(false);
+
+    if (!result.ok) {
+      const message = result.error ?? "Request failed.";
+      setConfirmError(message);
+      toast.error("Restock request failed", { description: message });
+      throw new Error(message);
+    }
+
+    toast.success("Restock request recorded", {
+      description: `${row.product_name}: need ${requestedQty || "restock"}`,
+    });
+    onClose();
+    router.refresh();
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/45 px-4 py-8" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid items-end bg-black/45 p-0 sm:place-items-center sm:px-4 sm:py-8" onClick={onClose}>
       <div className="w-full max-w-lg" onClick={(event) => event.stopPropagation()}>
-        <FluidEntrySurface className="max-w-lg rounded-3xl border border-white/50 bg-white/85 backdrop-blur-2xl" contentClassName="p-6">
+        <FluidEntrySurface className="max-h-[92dvh] max-w-lg rounded-t-3xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[92dvh] overflow-y-auto p-5 sm:p-6">
           <form onSubmit={handleSubmit}>
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -247,16 +294,33 @@ function PingDialog({ row, onClose }: { row: InventoryRow; onClose: () => void }
             </label>
             {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div> : null}
           </div>
-          <div className="mt-6 flex justify-end gap-3">
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <Button type="button" variant="outline" onClick={onClose} className="h-12 rounded-lg bg-white px-6 text-base font-bold hover:bg-white">Cancel</Button>
             <Button disabled={isPending} className="h-12 rounded-lg bg-lime px-6 text-base font-bold text-black hover:bg-lime disabled:opacity-60">
-              {isPending ? "Sending..." : "Ping Admin"}
+              Review Ping
             </Button>
           </div>
           </form>
         </FluidEntrySurface>
         <p className="mt-3 text-center text-xs font-bold text-white/80">Click anywhere to close</p>
       </div>
+      {isConfirming ? (
+        <ConfirmSlideSheet
+          title="Confirm Admin Ping"
+          description="This restock request will be recorded for admin follow-up."
+          records={[
+            { label: "Product", value: row.product_name },
+            { label: "SKU", value: row.sku_code },
+            { label: "Current Stock", value: row.quantity },
+            { label: "Low Alert", value: row.low_stock_qty },
+            { label: "Requested", value: requestedQty || "Restock" },
+            { label: "Note", value: note },
+          ]}
+          error={confirmError}
+          onCancel={() => setIsConfirming(false)}
+          onConfirm={confirmRestockRequest}
+        />
+      ) : null}
     </div>
   );
 }
@@ -264,14 +328,24 @@ function PingDialog({ row, onClose }: { row: InventoryRow; onClose: () => void }
 export function RestockQueue({ requests, rows }: { requests: RestockRequestRow[]; rows: AdminInventoryRow[] }) {
   const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [confirmation, setConfirmation] = useState<{ request: RestockRequestRow; status: RestockStatus; label: string } | null>(null);
+  const [confirmError, setConfirmError] = useState<string | null>(null);
 
-  function updateStatus(requestId: string, status: RestockStatus) {
+  async function updateStatus(requestId: string, status: RestockStatus) {
     setPendingId(requestId);
-    startTransition(async () => {
-      await updateRestockStatusAction({ requestId, status });
-      setPendingId(null);
-      router.refresh();
-    });
+    const result = await updateRestockStatusAction({ requestId, status });
+    setPendingId(null);
+
+    if (!result.ok) {
+      const message = result.error ?? "Status update failed.";
+      setConfirmError(message);
+      toast.error("Status update failed", { description: message });
+      throw new Error(message);
+    }
+
+    toast.success("Restock status recorded", { description: `Request marked ${status}.` });
+    setConfirmation(null);
+    router.refresh();
   }
 
   function nextAction(status: RestockStatus) {
@@ -281,13 +355,13 @@ export function RestockQueue({ requests, rows }: { requests: RestockRequestRow[]
   }
 
   return (
-    <FluidEntrySurface className="mt-8 rounded-3xl border border-orange/25 bg-orange/5 backdrop-blur-2xl" contentClassName="p-4 sm:p-5">
+    <FluidEntrySurface className="mt-8 rounded-3xl border border-white/50 bg-white/60 backdrop-blur-2xl" contentClassName="p-4 sm:p-5">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-black tracking-[-0.05em]">Restock Follow-Up</h2>
           <p className="mt-1 text-sm font-semibold text-zinc-500">Contact supplier, then clear the request.</p>
         </div>
-        <div className="rounded-full bg-orange px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-white">{requests.length} active</div>
+        <div className="rounded-full bg-black px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-lime">{requests.length} active</div>
       </div>
       {requests.length === 0 ? (
         <div className="mt-4 rounded-2xl border border-white/60 bg-white/65 p-6 text-sm font-bold text-zinc-500 backdrop-blur-lg">No active restock requests.</div>
@@ -298,34 +372,41 @@ export function RestockQueue({ requests, rows }: { requests: RestockRequestRow[]
           const action = nextAction(request.status);
 
           return (
-            <div key={request.id} className="liquid-width-enter grid gap-4 rounded-2xl border border-white/60 bg-white/65 p-4 backdrop-blur-lg md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center">
+            <div key={request.id} className="liquid-width-enter grid gap-3 rounded-3xl border border-white/60 bg-white/70 p-3 shadow-sm shadow-black/5 backdrop-blur-lg md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-center md:gap-4 md:p-4 md:shadow-none">
               <div className="flex items-start justify-between gap-3 md:block">
                 <div className="min-w-0 md:min-w-[220px]">
-                  <div className="truncate text-base font-black tracking-[-0.04em]">{request.product_name}</div>
-                  <div className="mt-1 text-xs font-bold text-zinc-500">{request.sku_code} · {request.status}</div>
+                  <div className="line-clamp-2 text-base font-black leading-tight tracking-[-0.04em] md:truncate">{request.product_name}</div>
+                  <div className="mt-1 flex flex-wrap gap-1 text-xs font-bold text-zinc-500">
+                    <span className="rounded-full bg-zinc-100 px-2 py-0.5">{request.sku_code}</span>
+                    <span className="rounded-full bg-black px-2 py-0.5 capitalize text-lime">{request.status}</span>
+                  </div>
                 </div>
-                <div className="shrink-0 rounded-full bg-zinc-100 px-2.5 py-1 text-xs font-black text-zinc-600 md:mt-2 md:inline-block">{request.current_qty_snapshot}/{request.low_stock_qty_snapshot}</div>
+                <div className="shrink-0 rounded-2xl bg-zinc-100 px-3 py-2 text-center text-xs font-black text-zinc-600 md:mt-2 md:inline-block md:rounded-full md:px-2.5 md:py-1">
+                  <div className="text-[10px] uppercase tracking-[0.1em] text-zinc-400 md:hidden">Stock</div>
+                  {request.current_qty_snapshot}/{request.low_stock_qty_snapshot}
+                </div>
               </div>
               <div className="min-w-0 text-sm font-semibold text-zinc-600">
-                <div>Need {request.requested_qty ?? "restock"} · {request.requested_by_name || request.requested_by_email || "Staff"}</div>
+                <div className="font-bold text-black">Need {request.requested_qty ?? "restock"}</div>
+                <div className="mt-0.5 text-xs font-bold text-zinc-500">Requested by {request.requested_by_name || request.requested_by_email || "Staff"}</div>
                 {request.note ? <div className="mt-1 line-clamp-2 font-medium text-zinc-500">{request.note.replace("[demo] ", "")}</div> : null}
               </div>
-              <div className="grid grid-cols-[1fr_40px_40px] gap-2 md:w-[300px]">
+              <div className="grid grid-cols-[1fr_48px_48px] gap-2 md:w-[300px] md:grid-cols-[1fr_44px_44px]">
                 {row?.whatsapp_number ? (
-                  <WhatsAppLink phone={row.whatsapp_number} product={request.product_name} supplier={row.supplier_name ?? undefined} label="WhatsApp" className="h-10 rounded-lg bg-[#25D366] px-3 text-xs font-black text-white hover:bg-[#25D366]" />
+                  <WhatsAppLink phone={row.whatsapp_number} product={request.product_name} supplier={row.supplier_name ?? undefined} label="WhatsApp" className="h-12 rounded-2xl bg-[#25D366] px-3 text-xs font-black text-white hover:bg-[#25D366] md:h-11 md:rounded-lg" />
                 ) : (
-                  <Button type="button" disabled className="h-10 rounded-lg bg-zinc-200 px-3 text-xs font-black text-zinc-500">No Contact</Button>
+                  <Button type="button" disabled className="h-12 rounded-2xl bg-zinc-200 px-3 text-xs font-black text-zinc-500 md:h-11 md:rounded-lg">No Contact</Button>
                 )}
                 {action ? (
-                  <Button type="button" aria-label={action.label} title={action.label} disabled={pendingId === request.id} onClick={() => updateStatus(request.id, action.status)} className="h-10 rounded-lg bg-lime px-0 text-black hover:bg-lime disabled:opacity-60">
+                  <Button type="button" aria-label={action.label} title={action.label} disabled={pendingId === request.id} onClick={() => { setConfirmError(null); setConfirmation({ request, status: action.status, label: action.label }); }} className="h-12 rounded-2xl bg-lime px-0 text-black hover:bg-lime disabled:opacity-60 md:h-11 md:rounded-lg">
                     <Check className="size-5" />
                   </Button>
                 ) : (
-                  <Button type="button" aria-label="Settled" disabled className="h-10 rounded-lg bg-zinc-200 px-0 text-zinc-500">
+                  <Button type="button" aria-label="Settled" disabled className="h-12 rounded-2xl bg-zinc-200 px-0 text-zinc-500 md:h-11 md:rounded-lg">
                     <Check className="size-5" />
                   </Button>
                 )}
-                <Button type="button" aria-label="Discard request" title="Discard request" disabled={pendingId === request.id} onClick={() => updateStatus(request.id, "cancelled")} className="h-10 rounded-lg bg-red-500 px-0 text-white hover:bg-red-500 disabled:opacity-60">
+                <Button type="button" aria-label="Discard request" title="Discard request" disabled={pendingId === request.id} onClick={() => { setConfirmError(null); setConfirmation({ request, status: "cancelled", label: "Discard Request" }); }} className="h-12 rounded-2xl border border-border bg-white px-0 text-black hover:bg-white disabled:opacity-60 md:h-11 md:rounded-lg">
                   <X className="size-5" />
                 </Button>
               </div>
@@ -334,6 +415,24 @@ export function RestockQueue({ requests, rows }: { requests: RestockRequestRow[]
           })}
         </div>
       )}
+      {confirmation ? (
+        <ConfirmSlideSheet
+          title={confirmation.label}
+          description="This restock status change will be recorded for audit and reporting."
+          records={[
+            { label: "Product", value: confirmation.request.product_name },
+            { label: "SKU", value: confirmation.request.sku_code },
+            { label: "From", value: confirmation.request.status },
+            { label: "To", value: confirmation.status },
+            { label: "Need", value: confirmation.request.requested_qty ?? "Restock" },
+            { label: "Requested By", value: confirmation.request.requested_by_name || confirmation.request.requested_by_email || "Staff" },
+            { label: "Note", value: confirmation.request.note?.replace("[demo] ", "") },
+          ]}
+          error={confirmError}
+          onCancel={() => setConfirmation(null)}
+          onConfirm={() => updateStatus(confirmation.request.id, confirmation.status)}
+        />
+      ) : null}
     </FluidEntrySurface>
   );
 }
@@ -354,6 +453,7 @@ export function InventoryDashboard({
   const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all");
   const [viewAsStaff, setViewAsStaff] = useState(false);
   const [isStatsOpen, setIsStatsOpen] = useState(true);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [adjustment, setAdjustment] = useState<{ row: InventoryRow; direction: "add" | "deduct" } | null>(null);
   const [ping, setPing] = useState<InventoryRow | null>(null);
   const isAdmin = membership.role === "admin";
@@ -381,21 +481,30 @@ export function InventoryDashboard({
   ];
 
   return (
-    <main className="min-h-screen bg-white text-black">
+    <main className="min-h-screen bg-white pb-24 text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
         <AppSidebar active="stock" role={effectiveRole} restockCount={restockRequests.length} showStaffToggle={isAdmin} isViewingAsStaff={viewAsStaff} onToggleStaffView={() => setViewAsStaff((current) => !current)} />
 
-        <section className="px-5 py-8 sm:px-8 lg:px-7 xl:px-8">
-          <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+        <section className="px-4 py-5 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
+          <header className="flex items-start justify-between gap-4">
             <div>
               <StoreIdentityEditor initialName={membership.organization_name} initialIcon={membership.organization_icon} workspaceId={membership.organization_id} readOnly={effectiveRole !== "admin"} />
-              <div className="mt-3 inline-flex items-center gap-2 rounded-full bg-zinc-100 px-4 py-2 text-sm font-bold text-zinc-600">
+              <div className="mt-3 hidden items-center gap-2 rounded-full bg-zinc-100 px-4 py-2 text-sm font-bold text-zinc-600 sm:inline-flex">
                 <ShieldCheck className="size-4" />
                 {effectiveRole === "admin" ? "Admin view" : "Staff-safe view"}
               </div>
             </div>
 
-            <div className="flex flex-col gap-3 sm:items-end">
+            <button
+              type="button"
+              onClick={() => setIsMobileMenuOpen(true)}
+              className="grid size-12 shrink-0 place-items-center rounded-2xl border border-border bg-white text-black shadow-sm shadow-black/5 sm:hidden"
+              aria-label="Open page menu"
+            >
+              <Menu className="size-6" />
+            </button>
+
+            <div className="hidden flex-col gap-3 sm:flex sm:items-end">
               {isAdmin ? (
                 <Button type="button" variant="outline" onClick={() => setViewAsStaff((current) => !current)} className="h-11 rounded-lg border-border bg-white px-5 text-sm font-bold hover:bg-white lg:hidden">
                   {viewAsStaff ? "Admin View" : "View as Staff"}
@@ -478,10 +587,83 @@ export function InventoryDashboard({
             {filteredRows.map((row, index) => {
               const ratio = stockRatio(row.quantity, row.max_stock_qty);
               const percentage = Math.round(ratio * 100);
+              const status = stockStatus(row);
 
               return (
                 <FluidEntrySurface key={`${row.sku_id}-${row.location_id}`} entryDelay={Math.min(index * 0.07, 0.42)} className="rounded-3xl border border-white/50 bg-white/65 backdrop-blur-2xl transition-colors hover:border-zinc-300/80">
-                  <div className="grid grid-cols-[128px_1fr] xl:grid-cols-[144px_minmax(240px,1fr)_210px_260px] xl:items-stretch">
+                  <div className="p-3 xl:hidden">
+                    <div className="flex items-start gap-3">
+                      <div className="relative size-16 shrink-0 overflow-hidden rounded-2xl border border-white bg-white ring-1 ring-black/5">
+                        {row.photo_url ? (
+                          <Image src={row.photo_url} alt={row.product_name} fill loading={index === 0 ? "eager" : "lazy"} sizes="64px" className="object-cover" />
+                        ) : (
+                          <div className="grid size-full place-items-center bg-lime text-2xl font-black text-black/80">{row.product_name.slice(0, 1)}</div>
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1 pt-0.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <h2 className="line-clamp-2 text-lg font-black leading-[1.05] tracking-[-0.055em]">{row.product_name}</h2>
+                            <div className="mt-2 flex flex-wrap gap-1 text-[11px] font-bold text-zinc-500">
+                              {row.variant ? <span className="rounded-full bg-zinc-100 px-2 py-0.5">{row.variant}</span> : null}
+                              <span className="rounded-full bg-zinc-100 px-2 py-0.5">{row.sku_code}</span>
+                            </div>
+                          </div>
+                          <span className={cn("shrink-0 rounded-full px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.1em] ring-1", status.className)}>{status.label}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={cn("mt-3 rounded-2xl border-2 bg-zinc-50 p-3", stockCardBorder(row))}>
+                      <div className="flex items-end justify-between gap-3">
+                        <div>
+                          <div className="text-[11px] font-black uppercase tracking-[0.14em] text-zinc-400">Current Stock</div>
+                          <div className="mt-1 flex items-end gap-2">
+                            <span className="text-[38px] font-black leading-none tracking-[-0.08em]">{row.quantity}</span>
+                            <span className="pb-1.5 text-xs font-black text-zinc-400">/ {row.max_stock_qty}</span>
+                          </div>
+                        </div>
+                        <div className="text-right text-xs font-black text-zinc-500">Low at {row.low_stock_qty}</div>
+                      </div>
+                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-white ring-1 ring-border">
+                        <div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: stockColor(row.quantity, row.max_stock_qty) }} />
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2">
+                        <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-12 rounded-xl border-lime bg-white text-sm font-black hover:bg-white" onClick={() => setAdjustment({ row, direction: "deduct" })}>
+                          <Minus className="size-4" />
+                          Deduct
+                        </Button>
+                        <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-12 rounded-xl bg-lime text-sm font-black text-black hover:bg-lime" onClick={() => setAdjustment({ row, direction: "add" })}>
+                          <Plus className="size-4" />
+                          Add
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 rounded-2xl border border-border bg-white p-3">
+                      {effectiveRole === "admin" && isAdminRow(row) ? (
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-black tracking-[-0.035em]">{row.supplier_name ?? "No supplier"}</div>
+                            <div className="mt-0.5 text-xs font-bold text-zinc-500">{row.phone_raw ?? "No phone number"}</div>
+                          </div>
+                          {row.whatsapp_number ? (
+                            <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} label="WhatsApp" className="h-11 shrink-0 rounded-xl bg-[#25D366] px-4 text-xs font-black text-white hover:bg-[#25D366]" />
+                          ) : null}
+                        </div>
+                      ) : (
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-500">Need help?</div>
+                            <div className="mt-1 text-base font-black tracking-[-0.045em]">Ping admin</div>
+                          </div>
+                          <Button type="button" variant="outline" className="h-11 rounded-xl bg-white px-4 text-xs font-black hover:bg-white" onClick={() => setPing(row)}>Ping</Button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="hidden xl:grid xl:grid-cols-[144px_minmax(240px,1fr)_210px_260px] xl:items-stretch">
                     <ProductThumb label={row.product_name} photoUrl={row.photo_url} eager={index === 0} />
 
                     <div className="flex min-w-0 items-center px-2.5 py-2 sm:px-3">
@@ -507,10 +689,10 @@ export function InventoryDashboard({
                         <div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: stockColor(row.quantity, row.max_stock_qty) }} />
                       </div>
                       <div className="mt-2 grid grid-cols-2 gap-1.5">
-                        <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-8 rounded-md border-lime bg-white text-sm font-black hover:bg-white" onClick={() => setAdjustment({ row, direction: "deduct" })}>
+                        <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-10 rounded-md border-lime bg-white text-sm font-black hover:bg-white xl:h-8" onClick={() => setAdjustment({ row, direction: "deduct" })}>
                           <Minus className="size-4" />
                         </Button>
-                        <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-8 rounded-md bg-lime text-sm font-black text-black hover:bg-lime" onClick={() => setAdjustment({ row, direction: "add" })}>
+                        <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-10 rounded-md bg-lime text-sm font-black text-black hover:bg-lime xl:h-8" onClick={() => setAdjustment({ row, direction: "add" })}>
                           <Plus className="size-4" />
                         </Button>
                       </div>
@@ -523,7 +705,7 @@ export function InventoryDashboard({
                           <div className="text-[11px] font-bold text-zinc-500">{row.phone_raw ?? "No phone number"}</div>
                           <div className="mt-2">
                             {row.whatsapp_number ? (
-                              <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} className="h-8 w-full rounded-md bg-[#25D366] px-3 text-xs font-black text-white hover:bg-[#25D366]" />
+                              <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} className="h-10 w-full rounded-md bg-[#25D366] px-3 text-xs font-black text-white hover:bg-[#25D366] xl:h-8" />
                             ) : null}
                           </div>
                         </>
@@ -534,7 +716,7 @@ export function InventoryDashboard({
                             <div className="mt-2 text-xl font-black tracking-[-0.045em]">Ping admin</div>
                             <div className="mt-1 text-sm font-bold text-zinc-500">Supplier details hidden for staff.</div>
                           </div>
-                          <Button type="button" variant="outline" className="h-8 rounded-md bg-white px-3 text-xs font-black hover:bg-white" onClick={() => setPing(row)}>Ping Admin</Button>
+                          <Button type="button" variant="outline" className="h-10 rounded-md bg-white px-3 text-xs font-black hover:bg-white xl:h-8" onClick={() => setPing(row)}>Ping Admin</Button>
                         </div>
                       )}
                     </div>
@@ -557,6 +739,43 @@ export function InventoryDashboard({
 
       {adjustment ? <AdjustmentDialog row={adjustment.row} direction={adjustment.direction} onClose={() => setAdjustment(null)} /> : null}
       {ping ? <PingDialog row={ping} onClose={() => setPing(null)} /> : null}
+      {isMobileMenuOpen ? (
+        <div className="fixed inset-0 z-50 grid items-end bg-black/45 sm:hidden" onClick={() => setIsMobileMenuOpen(false)}>
+          <div className="rounded-t-3xl border border-white/50 bg-white p-4 shadow-2xl" onClick={(event) => event.stopPropagation()}>
+            <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-zinc-200" />
+            <div className="flex items-center gap-2 rounded-2xl bg-zinc-100 px-4 py-3 text-sm font-black text-zinc-600">
+              <ShieldCheck className="size-5" />
+              {effectiveRole === "admin" ? "Admin view" : "Staff-safe view"}
+            </div>
+            <div className="mt-4 grid gap-3">
+              {isAdmin ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setViewAsStaff((current) => !current);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="h-14 rounded-2xl border-border bg-white px-5 text-base font-black hover:bg-white"
+                >
+                  {viewAsStaff ? "Admin View" : "View as Staff"}
+                </Button>
+              ) : null}
+              {effectiveRole === "admin" ? (
+                <Button asChild className="h-14 rounded-2xl bg-lime px-5 text-base font-black text-black hover:bg-lime" onClick={() => setIsMobileMenuOpen(false)}>
+                  <Link href="/sku">
+                    <Plus className="size-5" />
+                    Add Product
+                  </Link>
+                </Button>
+              ) : null}
+              <form action={signOut}>
+                <Button variant="ghost" className="h-14 w-full justify-start rounded-2xl px-5 text-base font-black hover:bg-zinc-100">Sign out</Button>
+              </form>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }

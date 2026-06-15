@@ -29,7 +29,7 @@ export function StoreIdentityEditor({
   const ActiveIcon = storeIcons[iconIndex].icon;
 
   return (
-    <div className="mt-3 flex items-center gap-3 text-xl font-semibold tracking-[-0.035em]">
+    <div className="mt-3 flex flex-wrap items-center gap-3 text-xl font-semibold tracking-[-0.035em]">
       <div className="relative">
         <button
           type="button"
@@ -74,7 +74,7 @@ export function StoreIdentityEditor({
         <input
           aria-label="Store name"
           readOnly={readOnly}
-          className="w-[260px] min-w-0 bg-transparent font-semibold text-black outline-none transition placeholder:text-zinc-400 focus:border-b focus:border-black"
+          className="w-full max-w-[260px] min-w-0 bg-transparent font-semibold text-black outline-none transition placeholder:text-zinc-400 focus:border-b focus:border-black"
           defaultValue={initialName}
         />
         {readOnly ? null : <Pencil className="size-4 stroke-[2.4] text-zinc-500" aria-hidden="true" />}
