@@ -88,11 +88,13 @@ export default async function ReportsPage() {
     supabase
       .from("stock_movements")
       .select("id, sku_id, location_id, actor_user_id, movement_type, quantity_delta, quantity_before, quantity_after, reason, note, created_at")
+      .eq("organization_id", membership.organization_id)
       .order("created_at", { ascending: false })
       .limit(200),
     supabase
       .from("audit_events")
       .select("id, event_type, entity_type, action, entity_label, actor_user_id, actor_role, before_data, after_data, metadata, created_at")
+      .eq("organization_id", membership.organization_id)
       .order("created_at", { ascending: false })
       .limit(20),
     supabase.rpc("get_admin_restock_requests", { p_organization_id: membership.organization_id }),
@@ -180,12 +182,12 @@ export default async function ReportsPage() {
   });
 
   return (
-    <main className="min-h-screen bg-white pb-24 text-black lg:pb-0">
+    <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
         <AppSidebar active="reports" role="admin" restockCount={restockRows.length} />
-        <section className="px-4 py-5 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
-          <h1 className="text-4xl font-black tracking-[-0.055em] sm:text-[44px]">Reports</h1>
-          <p className="mt-2 text-base font-semibold text-zinc-500">Operational stock, restock, and audit trail.</p>
+        <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
+          <h1 className="text-2xl font-black tracking-[-0.055em] sm:text-[44px]">Reports</h1>
+          <p className="mt-1.5 text-sm font-semibold text-zinc-500 sm:text-base">Operational stock, restock, and audit trail.</p>
 
           <ReportsAreaChart data={movementChartData} />
 

@@ -1,8 +1,12 @@
-import type { NextRequest } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 
 import { updateSession } from "@/lib/supabase/proxy";
 
 export async function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname === "/auth/callback" || request.nextUrl.pathname === "/login") {
+    return NextResponse.next();
+  }
+
   return updateSession(request);
 }
 

@@ -17,7 +17,7 @@ const stockAdjustmentSchema = z.object({
 });
 
 export async function adjustStockAction(input: z.infer<typeof stockAdjustmentSchema>) {
-  await requireMembership();
+  const membership = await requireMembership();
   const parsed = stockAdjustmentSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -25,6 +25,18 @@ export async function adjustStockAction(input: z.infer<typeof stockAdjustmentSch
   }
 
   const supabase = await createClient();
+  const { data: inventoryRow, error: inventoryError } = await supabase
+    .from("inventory_levels")
+    .select("id")
+    .eq("organization_id", membership.organization_id)
+    .eq("sku_id", parsed.data.skuId)
+    .eq("location_id", parsed.data.locationId)
+    .maybeSingle();
+
+  if (inventoryError || !inventoryRow) {
+    return { ok: false, error: "Inventory row is not available in the selected workspace." };
+  }
+
   const delta = parsed.data.direction === "add" ? parsed.data.quantity : -parsed.data.quantity;
   const { error } = await supabase.rpc("adjust_stock", {
     p_sku_id: parsed.data.skuId,
@@ -39,6 +51,7 @@ export async function adjustStockAction(input: z.infer<typeof stockAdjustmentSch
   }
 
   revalidatePath("/");
+  revalidatePath("/sku");
 
   return { ok: true };
 }

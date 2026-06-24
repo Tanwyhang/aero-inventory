@@ -3,19 +3,24 @@
 import { FormEvent, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { ImageIcon, Pencil, Plus, Save, Trash2, X } from "lucide-react";
+import { ChevronDown, ImageIcon, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
 
-import { archiveSkuAction, createSkuAction, createVariationGroupAction, removeSkuPhotoAction, updateSkuAction, uploadSkuPhotoAction } from "@/app/actions/skus";
+import { adjustStockAction } from "@/app/actions/stock";
+import { archiveSkuAction, createProductCategoryAction, createSkuAction, createVariationGroupAction, removeSkuPhotoAction, updateProductCategoryAction, updateSkuAction, uploadSkuPhotoAction } from "@/app/actions/skus";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ConfirmSlideSheet, type ConfirmationRecord } from "@/components/confirm-slide-sheet";
 import { FluidEntrySurface } from "@/components/fluid-entry-surface";
 import { StoreIdentityEditor } from "@/components/store-identity-editor";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { LumaSpinner } from "@/components/ui/luma-spinner";
 import { toast } from "@/components/ui/toast";
+import { DEFAULT_STOCK_ADJUSTMENT_REASON } from "@/lib/stock-reasons";
 import type { AdminSkuManagerRow, Membership } from "@/types/database";
 
 type Draft = {
   skuId?: string;
+  locationId?: string;
   productName: string;
   variant: string;
   skuCode: string;
@@ -24,10 +29,11 @@ type Draft = {
   contactName: string;
   country: "MY" | "TH";
   phoneRaw: string;
-  price: number;
-  lowStockQty: number;
-  maxStockQty: number;
-  openingStock: number;
+  price: string;
+  lowStockQty: string;
+  maxStockQty: string;
+  openingStock: string;
+  originalStock: string;
   photoUrl: string | null;
   photoPath: string | null;
   demoPhotoPath?: string;
@@ -39,14 +45,15 @@ type VariationItemDraft = {
   clientId: string;
   name: string;
   skuCode: string;
-  price: number;
-  lowStockQty: number;
-  maxStockQty: number;
-  openingStock: number;
+  price: string;
+  lowStockQty: string;
+  maxStockQty: string;
+  openingStock: string;
   photoFile: File | null;
 };
 
 type VariationDraft = {
+  variationGroupId?: string;
   productName: string;
   variationName: string;
   addVariationImages: boolean;
@@ -63,6 +70,12 @@ type PendingConfirmation = {
   description: string;
   records: ConfirmationRecord[];
   onConfirm: () => Promise<void>;
+  onCancel?: () => void;
+};
+
+type ProductCategory = {
+  id: string;
+  name: string;
 };
 
 const demoDraft: Draft = {
@@ -74,10 +87,11 @@ const demoDraft: Draft = {
   contactName: "Maya",
   country: "MY",
   phoneRaw: "012-345 6789",
-  price: 0,
-  lowStockQty: 8,
-  maxStockQty: 60,
-  openingStock: 24,
+  price: "0",
+  lowStockQty: "8",
+  maxStockQty: "60",
+  openingStock: "24",
+  originalStock: "24",
   photoUrl: null,
   photoPath: null,
 };
@@ -91,16 +105,17 @@ function newVariationItem(index: number): VariationItemDraft {
     clientId: crypto.randomUUID(),
     name: "",
     skuCode: `VAR-${suffix}-${index}`,
-    price: 0,
-    lowStockQty: 8,
-    maxStockQty: 60,
-    openingStock: 0,
+    price: "0",
+    lowStockQty: "8",
+    maxStockQty: "60",
+    openingStock: "0",
     photoFile: null,
   };
 }
 
 function newVariationDraft(): VariationDraft {
   return {
+    variationGroupId: undefined,
     productName: "Demo Cat Food",
     variationName: "Flavor",
     addVariationImages: true,
@@ -113,12 +128,127 @@ function newVariationDraft(): VariationDraft {
   };
 }
 
-function formatPrice(price: number | null | undefined) {
+function formatPrice(price: number | string | null | undefined) {
   return `RM ${Number(price ?? 0).toFixed(2)}`;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="grid min-w-0 gap-2 text-sm font-black tracking-[-0.02em] text-zinc-700">{label}{children}</label>;
+}
+
+function stockProgress(stock: number, lowStock: number) {
+  if (lowStock <= 0) return stock > 0 ? 100 : 0;
+  return Math.max(0, Math.min((stock / lowStock) * 100, 100));
+}
+
+function stockProgressColor(stock: number, lowStock: number) {
+  if (stock <= 0) return "bg-red-500";
+  if (stock <= lowStock) return "bg-orange";
+  return "bg-lime";
+}
+
+function StockStat({ quantity, lowStock }: { quantity: number; lowStock: number }) {
+  return (
+    <div className="grid w-full max-w-[120px] min-w-[96px] gap-1">
+      <div className="flex items-baseline gap-1 font-bold tabular-nums">
+        <span className={quantity <= lowStock ? "text-orange" : "text-zinc-900"}>{quantity}</span>
+        <span className="text-[11px] font-semibold text-zinc-400">Low {lowStock}</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-full bg-zinc-100">
+        <div className={`h-full rounded-full ${stockProgressColor(quantity, lowStock)}`} style={{ width: `${stockProgress(quantity, lowStock)}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function CategoryDropdown({
+  value,
+  categories,
+  onChange,
+  onAdd,
+  onEdit,
+  isEditorOpen,
+  categoryDraft,
+  editingCategoryId,
+  isCategoryPending,
+  onCategoryDraftChange,
+  onSaveCategory,
+  onCancelCategory,
+}: {
+  value: string;
+  categories: ProductCategory[];
+  onChange: (value: string) => void;
+  onAdd: () => void;
+  onEdit: (category: ProductCategory) => void;
+  isEditorOpen: boolean;
+  categoryDraft: string;
+  editingCategoryId: string | null;
+  isCategoryPending: boolean;
+  onCategoryDraftChange: (value: string) => void;
+  onSaveCategory: () => Promise<boolean>;
+  onCancelCategory: () => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+
+  return (
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+      <DropdownMenuTrigger asChild>
+        <button type="button" className={inputClassName}>
+          <span className="flex min-w-0 items-center justify-between gap-3">
+            <span className={value ? "truncate text-black" : "truncate text-zinc-400"}>{value || "Choose category"}</span>
+            <ChevronDown className="size-4 shrink-0 text-zinc-500" />
+          </span>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-[min(22rem,calc(100vw-2rem))]">
+        <DropdownMenuLabel>Categories</DropdownMenuLabel>
+        <DropdownMenuItem onSelect={() => { onCancelCategory(); onChange(""); }}>No category</DropdownMenuItem>
+        <div className="grid gap-1 px-1">
+          {categories.map((category) => (
+            <div key={category.id} className="flex min-w-0 items-center gap-1 rounded-md hover:bg-zinc-100">
+              <button
+                type="button"
+                className="min-w-0 flex-1 truncate px-2 py-1.5 text-left text-sm font-semibold"
+                onClick={() => {
+                  onCancelCategory();
+                  onChange(category.name);
+                  setIsOpen(false);
+                }}
+              >
+                {category.name}
+              </button>
+              <Button type="button" variant="ghost" size="icon" onClick={() => onEdit(category)} aria-label={`Edit ${category.name}`}>
+                <Pencil className="size-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem onSelect={(event) => { event.preventDefault(); onAdd(); }}><Plus className="size-4" />Add category</DropdownMenuItem>
+        {isEditorOpen ? (
+          <>
+            <DropdownMenuSeparator />
+            <form
+              className="grid gap-2 p-2"
+              onSubmit={async (event) => {
+                event.preventDefault();
+                const saved = await onSaveCategory();
+                if (saved) setIsOpen(false);
+              }}
+              onKeyDown={(event) => event.stopPropagation()}
+            >
+              <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-500">{editingCategoryId ? "Edit Category" : "Add Category"}</div>
+              <input autoFocus autoComplete="off" value={categoryDraft} onChange={(event) => onCategoryDraftChange(event.target.value)} className={inputClassName} placeholder="Food, Grooming, Treats" />
+              <div className="flex justify-end gap-2">
+                <Button type="button" variant="outline" size="sm" onClick={onCancelCategory}>Cancel</Button>
+                <Button type="submit" size="sm" disabled={!categoryDraft.trim() || isCategoryPending}>{isCategoryPending ? "Saving..." : editingCategoryId ? "Save" : "Add"}</Button>
+              </div>
+            </form>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
 }
 
 function FormSection({ title, children }: { title: string; children: React.ReactNode }) {
@@ -152,11 +282,10 @@ function PhotoPicker({
           </div>
         )}
       </div>
-      <span className="text-xs font-semibold text-zinc-500">{photoFile ? photoFile.name : "Camera or gallery"}</span>
+      <span className="text-xs font-semibold text-zinc-500">{photoFile ? photoFile.name : "Choose from gallery"}</span>
       <input
         type="file"
         accept="image/jpeg,image/png,image/webp,image/gif"
-        capture="environment"
         className="sr-only"
         onChange={(event) => onPhotoChange(event.target.files?.[0] ?? null)}
       />
@@ -164,7 +293,7 @@ function PhotoPicker({
   );
 }
 
-export function AdminSkuManager({ membership, rows, restockCount = 0 }: { membership: Membership; rows: AdminSkuManagerRow[]; restockCount?: number }) {
+export function AdminSkuManager({ membership, rows, categories, restockCount = 0 }: { membership: Membership; rows: AdminSkuManagerRow[]; categories: ProductCategory[]; restockCount?: number }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft>(demoDraft);
   const [createMode, setCreateMode] = useState<CreateMode>("single");
@@ -176,17 +305,32 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
   const [error, setError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [categoryDraft, setCategoryDraft] = useState("");
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [isCategoryEditorOpen, setIsCategoryEditorOpen] = useState(false);
+  const [isCategoryPending, setIsCategoryPending] = useState(false);
+  const [query, setQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState("all");
   const isEditing = Boolean(draft.skuId);
   const selectedPhotoUrl = useMemo(() => (photoFile ? URL.createObjectURL(photoFile) : null), [photoFile]);
+  const filteredRows = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+
+    return rows.filter((row) => {
+      const matchesCategory = categoryFilter === "all" || (row.category_name ?? "") === categoryFilter;
+      const haystack = [row.product_name, row.variant, row.sku_code, row.category_name, row.supplier_name, row.variation_name].filter(Boolean).join(" ").toLowerCase();
+      return matchesCategory && (!normalizedQuery || haystack.includes(normalizedQuery));
+    });
+  }, [categoryFilter, query, rows]);
   const tableEntries = useMemo(() => {
     const entries: Array<
-      | { type: "group"; id: string; productName: string; variationName: string; count: number }
+      | { type: "group"; id: string; productName: string; variationName: string; rows: AdminSkuManagerRow[] }
       | { type: "sku"; row: AdminSkuManagerRow }
     > = [];
     const grouped = new Map<string, AdminSkuManagerRow[]>();
     const singles: AdminSkuManagerRow[] = [];
 
-    for (const row of rows) {
+    for (const row of filteredRows) {
       if (!row.variation_group_id) {
         singles.push(row);
         continue;
@@ -197,16 +341,15 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
       grouped.set(row.variation_group_id, groupRows);
     }
 
-    for (const row of singles) entries.push({ type: "sku", row });
-
     for (const [id, groupRows] of grouped) {
       const first = groupRows[0];
-      entries.push({ type: "group", id, productName: first.product_name, variationName: first.variation_name ?? "Variation", count: groupRows.length });
-      for (const row of groupRows) entries.push({ type: "sku", row });
+      entries.push({ type: "group", id, productName: first.product_name, variationName: first.variation_name ?? "Variation", rows: groupRows });
     }
 
+    for (const row of singles) entries.push({ type: "sku", row });
+
     return entries;
-  }, [rows]);
+  }, [filteredRows]);
 
   useEffect(() => {
     return () => {
@@ -229,11 +372,86 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
     }));
   }
 
+  function normalizedSkuDraft() {
+    const lowStockQty = Number(draft.lowStockQty || 0);
+    const openingStock = Number(draft.openingStock || 0);
+
+    return {
+      ...draft,
+      price: Number(draft.price || 0),
+      lowStockQty,
+      maxStockQty: Math.max(lowStockQty, openingStock, Number(draft.maxStockQty || 0)),
+      openingStock,
+    };
+  }
+
+  function normalizedVariationItems() {
+    return variationDraft.items.map((item) => {
+      const lowStockQty = Number(item.lowStockQty || 0);
+      const openingStock = Number(item.openingStock || 0);
+
+      return {
+        clientId: item.clientId,
+        name: item.name,
+        skuCode: item.skuCode,
+        price: Number(item.price || 0),
+        lowStockQty,
+        maxStockQty: Math.max(lowStockQty, openingStock, Number(item.maxStockQty || 0)),
+        openingStock,
+      };
+    });
+  }
+
+  function startCategoryAdd() {
+    setEditingCategoryId(null);
+    setCategoryDraft("");
+    setIsCategoryEditorOpen(true);
+  }
+
+  function startCategoryEdit(category: ProductCategory) {
+    setEditingCategoryId(category.id);
+    setCategoryDraft(category.name);
+    setIsCategoryEditorOpen(true);
+  }
+
   function addVariationItem() {
     setVariationDraft((current) => ({
       ...current,
       items: [...current.items, newVariationItem(current.items.length + 1)],
     }));
+  }
+
+  function openAppendVariation(row: AdminSkuManagerRow, groupRows?: AdminSkuManagerRow[]) {
+    const sourceRows = groupRows?.length ? groupRows : [row];
+    const first = sourceRows[0];
+
+    setCreateMode("variation");
+    setDraft({
+      ...demoDraft,
+      productName: first.product_name,
+      categoryName: first.category_name ?? "",
+      supplierName: first.supplier_name ?? demoDraft.supplierName,
+      contactName: first.contact_name ?? "",
+      country: first.country === "TH" ? "TH" : "MY",
+      phoneRaw: first.phone_raw ?? demoDraft.phoneRaw,
+      photoUrl: first.photo_url ?? null,
+      photoPath: first.photo_path,
+    });
+    setVariationDraft({
+      variationGroupId: first.variation_group_id ?? undefined,
+      productName: first.product_name,
+      variationName: first.variation_name ?? "Variation",
+      addVariationImages: Boolean(first.add_variation_images),
+      categoryName: first.category_name ?? "",
+      supplierName: first.supplier_name ?? demoDraft.supplierName,
+      contactName: first.contact_name ?? "",
+      country: first.country === "TH" ? "TH" : "MY",
+      phoneRaw: first.phone_raw ?? demoDraft.phoneRaw,
+      items: [newVariationItem(sourceRows.length + 1)],
+    });
+    setPhotoFile(null);
+    setError(null);
+    setIsOpen(true);
   }
 
   function removeVariationItem(clientId: string) {
@@ -264,6 +482,7 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
   function openEdit(row: AdminSkuManagerRow) {
     setDraft({
       skuId: row.sku_id,
+      locationId: row.location_id,
       productName: row.product_name,
       variant: row.variant ?? "",
       skuCode: row.sku_code,
@@ -272,10 +491,11 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
       contactName: row.contact_name ?? "",
       country: row.country === "TH" ? "TH" : "MY",
       phoneRaw: row.phone_raw ?? "",
-      price: row.price ?? 0,
-      lowStockQty: row.low_stock_qty,
-      maxStockQty: row.max_stock_qty,
-      openingStock: row.quantity,
+      price: String(row.price ?? 0),
+      lowStockQty: String(row.low_stock_qty),
+      maxStockQty: String(row.max_stock_qty),
+      openingStock: String(row.quantity),
+      originalStock: String(row.quantity),
       photoUrl: row.photo_url ?? null,
       photoPath: row.photo_path,
       demoPhotoPath: undefined,
@@ -291,22 +511,23 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
     setConfirmError(null);
 
     if (variationDraft.addVariationImages && variationDraft.items.some((item) => !item.photoFile)) {
-      setError("Add a photo for every variation item, or turn off variation images.");
+      setError("Add a photo for every type, or turn off type images.");
       return;
     }
 
     setConfirmation({
-      title: "Confirm Variation Bundle",
-      description: "This will create a variation group and record every item as a real inventory SKU.",
+      title: "Confirm SKU Types",
+      description: "This will create a main SKU and record every type as a real inventory SKU.",
       records: [
         { label: "Product", value: variationDraft.productName },
-        { label: "Variation", value: variationDraft.variationName },
+        { label: "Type", value: variationDraft.variationName },
+        { label: "Mode", value: variationDraft.variationGroupId ? "Add types to main SKU" : "Create main SKU" },
         { label: "Category", value: variationDraft.categoryName },
-        { label: "Items", value: variationDraft.items.length },
+        { label: "Types", value: variationDraft.items.length },
         { label: "Supplier", value: variationDraft.supplierName },
         { label: "Contact", value: variationDraft.contactName || variationDraft.phoneRaw },
-        { label: "Images", value: variationDraft.addVariationImages ? "Required per item" : "Not required" },
-        { label: "Opening Stock", value: variationDraft.items.reduce((sum, item) => sum + Number(item.openingStock || 0), 0) },
+        { label: "Images", value: variationDraft.addVariationImages ? "Required per type" : "Not required" },
+        { label: "Starting Stock", value: normalizedVariationItems().reduce((sum, item) => sum + item.openingStock, 0) },
       ],
       onConfirm: executeVariationSave,
     });
@@ -318,6 +539,7 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
     const formData = new FormData();
     formData.set("payload", JSON.stringify({
       productName: variationDraft.productName,
+      variationGroupId: variationDraft.variationGroupId,
       variationName: variationDraft.variationName,
       addVariationImages: variationDraft.addVariationImages,
       categoryName: variationDraft.categoryName,
@@ -325,15 +547,7 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
       contactName: variationDraft.contactName,
       country: variationDraft.country,
       phoneRaw: variationDraft.phoneRaw,
-      items: variationDraft.items.map((item) => ({
-        clientId: item.clientId,
-        name: item.name,
-        skuCode: item.skuCode,
-        price: item.price,
-        lowStockQty: item.lowStockQty,
-        maxStockQty: item.maxStockQty,
-        openingStock: item.openingStock,
-      })),
+        items: normalizedVariationItems(),
     }));
 
     if (variationDraft.addVariationImages) {
@@ -352,7 +566,7 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
       throw new Error(message);
     }
 
-    toast.success("Variation SKUs recorded", { description: `${variationDraft.productName}: ${variationDraft.items.length} items created.` });
+    toast.success(variationDraft.variationGroupId ? "SKU types added" : "SKU types recorded", { description: `${variationDraft.productName}: ${variationDraft.items.length} types created.` });
     setConfirmation(null);
     setIsOpen(false);
     setCreateMode("single");
@@ -365,9 +579,17 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
     setError(null);
     setConfirmError(null);
 
+    if (isEditing) {
+      const nextStock = Number(draft.openingStock || 0);
+      if (!Number.isInteger(nextStock) || nextStock < 0) {
+        setError("Enter a valid current stock count.");
+        return;
+      }
+    }
+
     setConfirmation({
       title: isEditing ? "Confirm SKU Update" : "Confirm New SKU",
-      description: isEditing ? "This will update SKU details and write an audit record." : "This will create a SKU, inventory row, and opening stock record.",
+      description: isEditing ? "This will update SKU details and write an audit record." : "This will create a SKU, inventory row, and starting stock record.",
       records: [
         { label: "Product", value: draft.productName },
         { label: "Variant", value: draft.variant },
@@ -376,9 +598,9 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
         { label: "Price", value: formatPrice(draft.price) },
         { label: "Supplier", value: draft.supplierName },
         { label: "Contact", value: draft.contactName || draft.phoneRaw },
-        { label: "Low Alert", value: draft.lowStockQty },
-        { label: "Full Stock", value: draft.maxStockQty },
-        { label: isEditing ? "Photo Change" : "Opening Stock", value: isEditing ? (photoFile ? photoFile.name : "No photo change") : draft.openingStock },
+        { label: "Low at", value: draft.lowStockQty },
+        { label: isEditing ? "Current Stock" : "Starting Stock", value: isEditing ? `${draft.originalStock} -> ${draft.openingStock}` : draft.openingStock },
+        ...(isEditing ? [{ label: "Photo Change", value: photoFile ? photoFile.name : "No photo change" }] : []),
       ],
       onConfirm: executeSingleSkuSave,
     });
@@ -387,7 +609,8 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
   async function executeSingleSkuSave() {
     setIsPending(true);
     setConfirmError(null);
-    const result = isEditing ? await updateSkuAction(draft) : await createSkuAction(draft);
+    const payload = normalizedSkuDraft();
+    const result = isEditing ? await updateSkuAction(payload) : await createSkuAction(payload);
 
     if (result.ok !== true) {
       setIsPending(false);
@@ -399,6 +622,39 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
 
     const createdSkuId = "skuId" in result && typeof result.skuId === "string" ? result.skuId : undefined;
     const skuId = draft.skuId ?? createdSkuId;
+
+    if (isEditing && draft.locationId) {
+      const previousStock = Number(draft.originalStock || 0);
+      const nextStock = Number(draft.openingStock || 0);
+      const delta = nextStock - previousStock;
+
+      if (!Number.isInteger(nextStock) || nextStock < 0) {
+        setIsPending(false);
+        const message = "Enter a valid current stock count.";
+        setConfirmError(message);
+        toast.error("Stock update failed", { description: message });
+        throw new Error(message);
+      }
+
+      if (delta !== 0) {
+        const stockResult = await adjustStockAction({
+          skuId: draft.skuId ?? "",
+          locationId: draft.locationId,
+          direction: delta > 0 ? "add" : "deduct",
+          quantity: Math.abs(delta),
+          reason: DEFAULT_STOCK_ADJUSTMENT_REASON,
+          note: "Updated from SKU edit modal",
+        });
+
+        if (!stockResult.ok) {
+          setIsPending(false);
+          const message = stockResult.error ?? "Stock update failed.";
+          setConfirmError(message);
+          toast.error("Stock update failed", { description: message });
+          throw new Error(message);
+        }
+      }
+    }
 
     if (photoFile && skuId) {
       const formData = new FormData();
@@ -417,7 +673,7 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
 
     setIsPending(false);
 
-    toast.success(isEditing ? "SKU update recorded" : "SKU created", { description: `${draft.productName} (${draft.skuCode})` });
+    toast.success(isEditing ? "SKU update recorded" : "SKU created", { description: `${payload.productName} (${payload.skuCode})` });
     setConfirmation(null);
     setIsOpen(false);
     setDraft({ ...demoDraft });
@@ -425,19 +681,42 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
     router.refresh();
   }
 
-  function archiveSku(row: AdminSkuManagerRow) {
+  async function saveCategory() {
+    const name = categoryDraft.trim();
+    if (!name) return false;
+    setIsCategoryPending(true);
+    setError(null);
+    const result = editingCategoryId ? await updateProductCategoryAction({ categoryId: editingCategoryId, name }) : await createProductCategoryAction({ name });
+    setIsCategoryPending(false);
+    if (!result.ok) {
+      const message = result.error ?? "Category save failed.";
+      setError(message);
+      toast.error("Category save failed", { description: message });
+      return false;
+    }
+    toast.success(editingCategoryId ? "Category updated" : "Category recorded", { description: name });
+    setDraft((current) => ({ ...current, categoryName: name }));
+    setVariationDraft((current) => ({ ...current, categoryName: name }));
+    setCategoryDraft("");
+    setEditingCategoryId(null);
+    setIsCategoryEditorOpen(false);
+    router.refresh();
+    return true;
+  }
+
+  function archiveCurrentSku() {
+    if (!draft.skuId) return;
     setConfirmError(null);
     setConfirmation({
-      title: "Confirm SKU Archive",
-      description: "This will archive the SKU and remove it from active inventory views.",
+      title: "Confirm SKU Delete",
+      description: "This will delete the SKU and remove it from active inventory views.",
       records: [
-        { label: "Product", value: row.product_name },
-        { label: "Variant", value: row.variant },
-        { label: "SKU", value: row.sku_code },
-        { label: "Current Stock", value: row.quantity },
-        { label: "Supplier", value: row.supplier_name },
+        { label: "Product", value: draft.productName },
+        { label: "Variant", value: draft.variant },
+        { label: "SKU", value: draft.skuCode },
+        { label: "Supplier", value: draft.supplierName },
       ],
-      onConfirm: () => executeArchiveSku(row.sku_id),
+      onConfirm: () => executeArchiveSku(draft.skuId ?? ""),
     });
   }
 
@@ -447,13 +726,14 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
     const result = await archiveSkuAction(skuId);
     setIsPending(false);
     if (!result.ok) {
-      const message = result.error ?? "Archive failed.";
+      const message = result.error ?? "Delete failed.";
       setConfirmError(message);
-      toast.error("Archive failed", { description: message });
+      toast.error("Delete failed", { description: message });
       throw new Error(message);
     }
-    toast.success("SKU archived", { description: "The SKU was removed from active inventory." });
+    toast.success("SKU deleted", { description: "The SKU was removed from active inventory." });
     setConfirmation(null);
+    setIsOpen(false);
     router.refresh();
   }
 
@@ -490,22 +770,36 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
     router.refresh();
   }
 
+  const categoryDropdownEditorProps = {
+    isEditorOpen: isCategoryEditorOpen,
+    categoryDraft,
+    editingCategoryId,
+    isCategoryPending,
+    onCategoryDraftChange: setCategoryDraft,
+    onSaveCategory: saveCategory,
+    onCancelCategory: () => {
+      setIsCategoryEditorOpen(false);
+      setEditingCategoryId(null);
+      setCategoryDraft("");
+    },
+  };
+
   return (
-    <main className="min-h-screen bg-white pb-24 text-black lg:pb-0">
+    <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
         <AppSidebar active="skus" role="admin" restockCount={restockCount} />
-        <section className="px-4 py-5 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
+        <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <h1 className="text-4xl font-black tracking-[-0.055em] sm:text-[44px]">SKUs</h1>
+              <h1 className="text-2xl font-black tracking-[-0.055em] sm:text-[44px]">SKUs</h1>
               <StoreIdentityEditor initialName={membership.organization_name} initialIcon={membership.organization_icon} workspaceId={membership.organization_id} />
             </div>
             <div className="flex flex-col gap-3 sm:items-end">
-              <FluidEntrySurface className="rounded-3xl border border-white/50 bg-lime/80 backdrop-blur-2xl" contentClassName="px-6 py-4 text-right">
-                <div className="text-sm font-bold uppercase tracking-[0.12em]">Active SKUs</div>
-                <div className="text-4xl font-black tracking-[-0.06em]">{rows.length}</div>
+              <FluidEntrySurface className="rounded-2xl border border-white/50 bg-lime/80 backdrop-blur-2xl sm:rounded-3xl" contentClassName="flex items-center justify-between gap-5 px-4 py-2.5 sm:block sm:px-6 sm:py-4 sm:text-right">
+                <div className="text-xs font-bold uppercase tracking-[0.12em] sm:text-sm">Active SKUs</div>
+                <div className="text-2xl font-black tracking-[-0.06em] sm:text-4xl">{rows.length}</div>
               </FluidEntrySurface>
-              <Button type="button" onClick={openCreate} className="h-12 rounded-lg bg-black px-6 text-base font-bold text-white hover:bg-black">
+              <Button type="button" onClick={openCreate} className="h-10 rounded-lg bg-black px-5 text-sm font-bold text-white hover:bg-black sm:h-12 sm:px-6 sm:text-base">
                 <Plus className="size-5" />
                 Add SKU
               </Button>
@@ -514,83 +808,110 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
 
           {error ? <div className="mt-6 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div> : null}
 
-          <div className="mt-6 grid gap-3 md:hidden">
+          <div className="mt-6 grid gap-2 rounded-2xl border border-zinc-200 bg-white p-3 sm:grid-cols-[1fr_220px] sm:p-4">
+            <label className="flex h-11 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 focus-within:ring-2 focus-within:ring-lime">
+              <Search className="size-4 shrink-0 text-zinc-500" />
+              <input value={query} onChange={(event) => setQuery(event.target.value)} className="h-full min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none placeholder:text-zinc-500" placeholder="Search name, variant, category, SKU, supplier" />
+            </label>
+            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="h-11 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-lime">
+              <option value="all">All categories</option>
+              {categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}
+            </select>
+          </div>
+
+          <div className="mt-4 grid gap-3">
             {tableEntries.map((entry) => {
               if (entry.type === "group") {
                 return (
-                  <div key={entry.id} className="sticky top-0 z-10 rounded-2xl border border-lime/40 bg-lime/90 p-3 shadow-sm backdrop-blur-xl">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="truncate text-sm font-black tracking-[-0.04em]">{entry.productName}</div>
-                        <div className="mt-0.5 text-xs font-bold text-black/60">{entry.variationName} · {entry.count} SKUs</div>
+                  <FluidEntrySurface key={entry.id} className="overflow-hidden rounded-xl border border-zinc-200 bg-white" contentClassName="p-0">
+                    <div className="grid 2xl:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.7fr)]">
+                      <div className="flex min-w-0 gap-3 border-b border-zinc-100 bg-zinc-50 px-3 py-3 2xl:border-r 2xl:border-b-0">
+                        <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-zinc-200 bg-lime text-lg font-black">
+                          {entry.rows[0]?.photo_url ? <Image src={entry.rows[0].photo_url} alt={entry.productName} width={48} height={48} className="size-full object-cover" /> : entry.productName.slice(0, 1)}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="line-clamp-2 text-sm font-black tracking-[-0.03em]">{entry.productName}</div>
+                          <div className="mt-1 text-xs font-bold text-zinc-500">Main SKU</div>
+                          <div className="mt-1 text-xs font-semibold text-zinc-400">{entry.variationName} · {entry.rows.length} types</div>
+                          <button type="button" onClick={() => openAppendVariation(entry.rows[0], entry.rows)} className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] font-black text-zinc-700 hover:border-black">
+                            <Plus className="size-3" /> Type
+                          </button>
+                        </div>
                       </div>
-                      <div className="shrink-0 rounded-full bg-black px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">Bundle</div>
+                      <div className="min-w-0 divide-y divide-zinc-100">
+                        <div className="hidden grid-cols-[130px_minmax(140px,1fr)_90px_110px_150px] gap-2 bg-zinc-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-zinc-400 2xl:grid">
+                          <div>SKU</div>
+                          <div>Type</div>
+                          <div>Price</div>
+                          <div>Stock</div>
+                          <div className="text-right">Action</div>
+                        </div>
+                        {entry.rows.map((row) => (
+                          <div key={row.sku_id} className="grid min-w-0 gap-2 px-3 py-2.5 text-sm sm:grid-cols-2 2xl:grid-cols-[130px_minmax(140px,1fr)_90px_110px_150px] 2xl:items-center">
+                            <div className="min-w-0 font-bold text-zinc-700 2xl:truncate" title={row.sku_code}><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 2xl:hidden">SKU</span>{row.sku_code}</div>
+                            <div className="min-w-0 font-semibold text-zinc-600 2xl:truncate" title={row.variant ?? undefined}><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 2xl:hidden">Type</span>{row.variant ?? "-"}</div>
+                            <div className="font-bold tabular-nums"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 2xl:hidden">Price</span>{formatPrice(row.price)}</div>
+                            <div className="grid gap-1"><span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 2xl:hidden">Stock</span><StockStat quantity={row.quantity} lowStock={row.low_stock_qty} /></div>
+                            <div className="flex flex-wrap gap-1.5 sm:col-span-2 2xl:col-span-1 2xl:justify-end">
+                              <Button type="button" variant="outline" size="sm" onClick={() => openAppendVariation(row, entry.rows)}><Plus className="size-3.5" />Type</Button>
+                              <Button type="button" variant="outline" size="sm" onClick={() => openEdit(row)}><Pencil className="size-3.5" />Edit</Button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
-                  </div>
+                  </FluidEntrySurface>
                 );
               }
 
               const row = entry.row;
 
               return (
-                <FluidEntrySurface key={row.sku_id} className="rounded-3xl border border-white/50 bg-white/70 backdrop-blur-2xl" contentClassName="p-3">
-                  <div className="flex items-start gap-3">
-                    <div className="grid size-[68px] shrink-0 place-items-center overflow-hidden rounded-2xl border border-white bg-lime text-xl font-black ring-1 ring-black/5">
-                      {row.photo_url ? <Image src={row.photo_url} alt={row.product_name} width={64} height={64} className="size-full object-cover" /> : row.product_name.slice(0, 1)}
+                <FluidEntrySurface key={row.sku_id} className="rounded-xl border border-zinc-200 bg-white" contentClassName="p-2.5">
+                  <div className="grid min-w-0 gap-3 xl:grid-cols-[minmax(240px,1fr)_90px_110px_minmax(170px,0.8fr)] 2xl:grid-cols-[minmax(260px,1fr)_90px_110px_minmax(180px,0.7fr)_180px] xl:items-center">
+                    <div className="flex min-w-0 items-start gap-3">
+                    <div className="grid size-11 shrink-0 place-items-center overflow-hidden rounded-lg border border-zinc-200 bg-lime text-base font-black">
+                      {row.photo_url ? <Image src={row.photo_url} alt={row.product_name} width={44} height={44} className="size-full object-cover" /> : row.product_name.slice(0, 1)}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="line-clamp-2 text-lg font-black leading-[1.05] tracking-[-0.05em]">{row.product_name}</div>
-                      <div className="mt-1 flex flex-wrap gap-1 text-xs font-bold text-zinc-500">
-                        {row.variation_name ? <span className="rounded-full bg-lime/25 px-2 py-0.5 text-black">{row.variation_name}</span> : null}
-                        {row.variant ? <span className="rounded-full bg-zinc-100 px-2 py-0.5">{row.variant}</span> : null}
-                        <span className="rounded-full bg-zinc-100 px-2 py-0.5">{row.sku_code}</span>
+                      <div className="truncate text-sm font-black tracking-[-0.03em]">{row.product_name}</div>
+                      <div className="mt-1 flex flex-wrap gap-1 text-[11px] font-bold text-zinc-500">
+                        {row.variant ? <span className="rounded bg-zinc-100 px-1.5 py-0.5">{row.variant}</span> : null}
+                        <span className="rounded bg-zinc-100 px-1.5 py-0.5">{row.sku_code}</span>
                       </div>
                     </div>
                   </div>
-                  <div className="mt-4 rounded-2xl border border-border bg-zinc-50 px-3 py-2.5">
-                    <div className="flex items-center justify-between gap-3 border-b border-border pb-2.5">
-                      <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-400">Price</div>
-                      <div className="text-base font-black tracking-[-0.04em]">{formatPrice(row.price)}</div>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 border-b border-border py-2.5">
-                      <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-400">Stock</div>
-                      <div className="text-base font-black tracking-[-0.04em]">{row.quantity} / {row.max_stock_qty}</div>
-                    </div>
-                    <div className="flex items-start justify-between gap-3 pt-2.5">
-                      <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-400">Supplier</div>
-                      <div className="min-w-0 text-right">
-                        <div className="truncate text-sm font-black">{row.supplier_name}</div>
-                        <div className="mt-0.5 text-xs font-bold text-zinc-500">{row.contact_name || "No contact"} · {row.country} {row.phone_raw}</div>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <Button type="button" variant="outline" className="h-12 rounded-2xl border-border bg-white px-4 text-sm font-bold hover:bg-white" onClick={() => openEdit(row)}>
-                      <Pencil className="size-4" />
+                    <div className="text-sm font-bold tabular-nums"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Price</span>{formatPrice(row.price)}</div>
+                    <div className="grid gap-1 text-sm font-bold"><span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Stock</span><StockStat quantity={row.quantity} lowStock={row.low_stock_qty} /></div>
+                    <div className="min-w-0 text-xs font-bold text-zinc-500"><span className="block truncate text-sm text-zinc-900">{row.supplier_name}</span>{row.contact_name || "No contact"} · {row.country}</div>
+                    <div className="flex flex-wrap gap-1.5 xl:col-span-4 2xl:col-span-1">
+                    <Button type="button" variant="outline" size="sm" onClick={() => openAppendVariation(row)}>
+                      <Plus className="size-3.5" />
+                      Type
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => openEdit(row)}>
+                      <Pencil className="size-3.5" />
                       Edit
                     </Button>
-                    <Button type="button" disabled={isPending} className="h-12 rounded-2xl bg-red-500 px-4 text-sm font-bold text-white hover:bg-red-500" onClick={() => archiveSku(row)}>
-                      <Trash2 className="size-4" />
-                      Archive
-                    </Button>
+                    </div>
                   </div>
                 </FluidEntrySurface>
               );
             })}
           </div>
 
-          <FluidEntrySurface className="mt-8 hidden rounded-3xl border border-white/50 bg-white/60 backdrop-blur-2xl md:block">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1300px] border-collapse text-left">
+          <FluidEntrySurface className="mt-8 hidden rounded-3xl border border-white/50 bg-white/60 backdrop-blur-2xl">
+            <div className="overflow-hidden">
+              <table className="w-full table-fixed border-collapse text-left">
                 <thead>
                   <tr className="h-[52px] bg-black text-white">
-                    <th className="w-[280px] px-6 text-base font-bold">Product</th>
-                    <th className="w-[140px] px-4 text-base font-bold">SKU</th>
-                    <th className="w-[120px] px-4 text-base font-bold">Price</th>
-                    <th className="w-[140px] px-4 text-base font-bold">Stock</th>
-                    <th className="w-[250px] px-4 text-base font-bold">Supplier</th>
-                    <th className="w-[240px] px-4 text-base font-bold">Contact</th>
-                    <th className="w-[210px] px-6 text-base font-bold">Actions</th>
+                    <th className="w-[25%] px-4 text-sm font-bold xl:px-5 xl:text-base">Product</th>
+                    <th className="w-[13%] px-3 text-sm font-bold xl:px-4 xl:text-base">SKU</th>
+                    <th className="w-[10%] px-3 text-sm font-bold xl:px-4 xl:text-base">Price</th>
+                    <th className="w-[10%] px-3 text-sm font-bold xl:px-4 xl:text-base">Stock</th>
+                    <th className="w-[16%] px-3 text-sm font-bold xl:px-4 xl:text-base">Supplier</th>
+                    <th className="w-[14%] px-3 text-sm font-bold xl:px-4 xl:text-base">Contact</th>
+                    <th className="w-[12%] px-4 text-sm font-bold xl:px-5 xl:text-base">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -598,11 +919,11 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
                     if (entry.type === "group") {
                       return (
                         <tr key={entry.id} className="border-t border-border bg-lime/15">
-                          <td colSpan={7} className="px-6 py-3">
+                          <td colSpan={7} className="px-4 py-3 xl:px-5">
                             <div className="flex flex-wrap items-center gap-3">
-                              <span className="rounded-full bg-black px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-white">Variation Bundle</span>
+                              <span className="rounded-full bg-black px-3 py-1 text-xs font-black uppercase tracking-[0.12em] text-white">Main SKU</span>
                               <span className="text-sm font-black tracking-[-0.02em]">{entry.productName}</span>
-                              <span className="text-sm font-bold text-zinc-500">{entry.variationName} · {entry.count} SKUs</span>
+                              <span className="text-sm font-bold text-zinc-500">Main SKU · {entry.variationName} · {entry.rows.length} types</span>
                             </div>
                           </td>
                         </tr>
@@ -613,37 +934,33 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
 
                     return (
                       <tr key={row.sku_id} className="h-[92px] border-t border-border">
-                        <td className="px-6 py-4">
-                          <div className="flex items-center gap-4">
-                            <div className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-xl border border-border bg-lime text-xl font-black">
+                        <td className="px-4 py-4 xl:px-5">
+                          <div className="flex min-w-0 items-center gap-3">
+                            <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-xl border border-border bg-lime text-xl font-black xl:size-14">
                               {row.photo_url ? <Image src={row.photo_url} alt={row.product_name} width={56} height={56} className="size-full object-cover" /> : row.product_name.slice(0, 1)}
                             </div>
-                            <div>
-                              <div className="text-base font-bold tracking-[-0.025em]">{row.product_name}</div>
-                              <div className="mt-2 flex flex-wrap gap-1 text-sm font-semibold tracking-[-0.03em]">
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-bold tracking-[-0.025em] xl:text-base">{row.product_name}</div>
+                              <div className="mt-2 flex min-w-0 flex-wrap gap-1 text-xs font-semibold tracking-[-0.03em] xl:text-sm">
                                 {row.variation_name ? <span className="rounded-md bg-zinc-100 px-2 py-0.5 text-xs font-black text-zinc-500">{row.variation_name}</span> : null}
-                                {row.variant ? <span>{row.variant}</span> : null}
+                                {row.variant ? <span className="truncate">{row.variant}</span> : null}
                               </div>
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 text-base font-bold">{row.sku_code}</td>
-                        <td className="px-4 text-base font-bold">{formatPrice(row.price)}</td>
-                        <td className="px-4 text-base font-bold">{row.quantity} / {row.max_stock_qty}</td>
-                        <td className="px-4 text-base font-bold">{row.supplier_name}</td>
-                        <td className="px-4 text-base font-medium leading-7">
-                          <div className="font-bold">{row.contact_name}</div>
-                          <div>{row.country} · {row.phone_raw}</div>
+                        <td className="truncate px-3 text-sm font-bold xl:px-4 xl:text-base" title={row.sku_code}>{row.sku_code}</td>
+                        <td className="px-3 text-sm font-bold xl:px-4 xl:text-base">{formatPrice(row.price)}</td>
+                        <td className="px-3 text-sm font-bold xl:px-4 xl:text-base"><div>{row.quantity}</div><div className="text-xs text-zinc-500">Low at {row.low_stock_qty}</div></td>
+                        <td className="truncate px-3 text-sm font-bold xl:px-4 xl:text-base" title={row.supplier_name ?? undefined}>{row.supplier_name}</td>
+                        <td className="px-3 text-sm font-medium leading-6 xl:px-4 xl:text-base xl:leading-7">
+                          <div className="truncate font-bold" title={row.contact_name ?? undefined}>{row.contact_name}</div>
+                          <div className="truncate" title={`${row.country ?? ""} · ${row.phone_raw ?? ""}`}>{row.country} · {row.phone_raw}</div>
                         </td>
-                        <td className="px-6">
-                          <div className="flex gap-3">
-                            <Button type="button" variant="outline" className="h-10 rounded-md border-border bg-white px-4 text-sm font-bold hover:bg-white" onClick={() => openEdit(row)}>
+                        <td className="px-4 xl:px-5">
+                          <div className="grid gap-2 xl:flex xl:gap-2">
+                            <Button type="button" variant="outline" className="h-9 rounded-md border-border bg-white px-2 text-xs font-bold hover:bg-white xl:h-10 xl:px-3 xl:text-sm" onClick={() => openEdit(row)}>
                               <Pencil className="size-4" />
                               Edit
-                            </Button>
-                            <Button type="button" disabled={isPending} className="h-10 rounded-md bg-red-500 px-4 text-sm font-bold text-white hover:bg-red-500" onClick={() => archiveSku(row)}>
-                              <Trash2 className="size-4" />
-                              Archive
                             </Button>
                           </div>
                         </td>
@@ -658,16 +975,16 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
       </div>
 
       {isOpen ? (
-        <div className="fixed inset-0 z-50 grid items-end bg-black/45 p-0 sm:place-items-center sm:px-4 sm:py-8" onClick={() => setIsOpen(false)}>
-          <div className="w-full max-w-6xl" onClick={(event) => event.stopPropagation()}>
-            <FluidEntrySurface className="max-h-[92dvh] max-w-6xl rounded-t-3xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[92dvh] overflow-y-auto p-5 sm:p-6">
+        <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={() => setIsOpen(false)}>
+          <div className="w-full max-w-[23rem] sm:max-w-6xl" onClick={(event) => event.stopPropagation()}>
+            <FluidEntrySurface className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
               <form onSubmit={isEditing || createMode === "single" ? handleSubmit : handleVariationSubmit}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-2xl font-black tracking-[-0.05em]">{isEditing ? "Edit SKU" : createMode === "variation" ? "Add Variation Bundle" : "Add SKU"}</h2>
-                  <p className="mt-1 text-sm font-semibold text-zinc-500">{createMode === "variation" && !isEditing ? "Create grouped variation items as real inventory SKUs." : "Manage product SKU details and admin-only supplier contact information."}</p>
+                  <h2 className="text-xl font-black tracking-[-0.05em] sm:text-2xl">{isEditing ? "Edit SKU" : createMode === "variation" ? (variationDraft.variationGroupId ? "Add Types" : "Add SKU With Types") : "Add SKU"}</h2>
+                  <p className="mt-1 text-sm font-semibold text-zinc-500">{createMode === "variation" && !isEditing ? (variationDraft.variationGroupId ? "Add more types under this main SKU." : "Create one main SKU with types like flavor, size, or color.") : "Manage product SKU details and admin-only supplier contact information."}</p>
                 </div>
-                <button type="button" onClick={() => setIsOpen(false)} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-white text-black">
+                <button type="button" onClick={() => setIsOpen(false)} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-white text-black" aria-label="Close SKU form">
                   <X className="size-5" />
                 </button>
               </div>
@@ -676,7 +993,7 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
                 <div className="mt-5 inline-flex rounded-xl border border-border bg-zinc-50 p-1">
                   {(["single", "variation"] as const).map((mode) => (
                     <button key={mode} type="button" onClick={() => setCreateMode(mode)} className={`h-10 rounded-lg px-4 text-sm font-black capitalize transition ${createMode === mode ? "bg-black text-white" : "text-zinc-500 hover:text-black"}`}>
-                      {mode === "single" ? "Single SKU" : "Variation Bundle"}
+                      {mode === "single" ? "Single SKU" : "SKU With Types"}
                     </button>
                   ))}
                 </div>
@@ -687,15 +1004,10 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
                   <FormSection title="Product">
                     <div className="lg:row-span-3">
                       <PhotoPicker photoUrl={selectedPhotoUrl ?? draft.photoUrl} photoFile={photoFile} onPhotoChange={setPhotoFile} />
-                      {isEditing && draft.photoPath ? (
-                        <Button type="button" variant="outline" disabled={isPhotoPending} onClick={removePhoto} className="mt-3 h-10 rounded-lg border-border bg-white px-4 text-sm font-bold hover:bg-white">
-                          Remove Photo
-                        </Button>
-                      ) : null}
                     </div>
                     <Field label="Name"><input required className={inputClassName} value={draft.productName} onChange={(event) => updateDraft("productName", event.target.value)} placeholder="Dog Food - Chicken" /></Field>
                     <Field label="Variant"><input className={inputClassName} value={draft.variant} onChange={(event) => updateDraft("variant", event.target.value)} placeholder="2kg, Medium, 10L" /></Field>
-                    <Field label="Category"><input className={inputClassName} value={draft.categoryName} onChange={(event) => updateDraft("categoryName", event.target.value)} placeholder="Food, Litter, Grooming" /></Field>
+                    <Field label="Category"><CategoryDropdown value={draft.categoryName} categories={categories} onChange={(value) => updateDraft("categoryName", value)} onAdd={startCategoryAdd} onEdit={startCategoryEdit} {...categoryDropdownEditorProps} /></Field>
                     <div className="lg:col-span-2">
                       <Field label="SKU ID"><input required className={inputClassName} value={draft.skuCode} onChange={(event) => updateDraft("skuCode", event.target.value.toUpperCase())} placeholder="DF-CH-2KG" /></Field>
                     </div>
@@ -709,21 +1021,51 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
                   </FormSection>
 
                   <FormSection title="Stock Rules">
-                    <Field label="Price"><input required min={0} step="0.01" type="number" className={inputClassName} value={draft.price} onChange={(event) => updateDraft("price", Number(event.target.value))} /></Field>
-                    <Field label="Low Alert"><input required min={0} type="number" className={inputClassName} value={draft.lowStockQty} onChange={(event) => updateDraft("lowStockQty", Number(event.target.value))} /></Field>
-                    <Field label="Full Stock"><input required min={0} type="number" className={inputClassName} value={draft.maxStockQty} onChange={(event) => updateDraft("maxStockQty", Number(event.target.value))} /></Field>
-                    {!isEditing ? <Field label="Opening Stock"><input required min={0} type="number" className={inputClassName} value={draft.openingStock} onChange={(event) => updateDraft("openingStock", Number(event.target.value))} /></Field> : null}
+                    <Field label="Price"><input required min={0} step="0.01" type="number" className={inputClassName} value={draft.price} onChange={(event) => updateDraft("price", event.target.value)} /></Field>
+                    <Field label="Low at"><input required min={0} type="number" className={inputClassName} value={draft.lowStockQty} onChange={(event) => updateDraft("lowStockQty", event.target.value)} /></Field>
+                    <Field label={isEditing ? "Current Stock" : "Starting Stock"}>
+                      <input required min={0} type="number" className={inputClassName} value={draft.openingStock} onChange={(event) => updateDraft("openingStock", event.target.value)} />
+                      {isEditing ? (
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+                          <div className={`h-full rounded-full ${stockProgressColor(Number(draft.openingStock || 0), Number(draft.lowStockQty || 0))}`} style={{ width: `${stockProgress(Number(draft.openingStock || 0), Number(draft.lowStockQty || 0))}%` }} />
+                        </div>
+                      ) : null}
+                    </Field>
                   </FormSection>
+                  {isEditing && draft.photoPath ? (
+                    <details className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 2xl:col-span-3">
+                      <summary className="cursor-pointer text-sm font-black text-zinc-600">Photo options</summary>
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <p className="text-sm font-semibold text-zinc-500">Remove the current SKU photo if it is wrong or outdated.</p>
+                        <Button type="button" variant="destructive" disabled={isPhotoPending} onClick={removePhoto}>
+                          <Trash2 className="size-4" />
+                          Remove Photo
+                        </Button>
+                      </div>
+                    </details>
+                  ) : null}
+                  {isEditing ? (
+                    <details className="rounded-xl border border-red-200 bg-red-50 p-3 2xl:col-span-3">
+                      <summary className="cursor-pointer text-sm font-black text-red-700">Danger zone</summary>
+                      <div className="mt-3 flex flex-wrap items-center gap-3">
+                        <p className="text-sm font-semibold text-red-700/80">Delete this SKU so it no longer appears in active inventory views.</p>
+                        <Button type="button" variant="destructive" disabled={isPending} onClick={archiveCurrentSku}>
+                          <Trash2 className="size-4" />
+                          Delete SKU
+                        </Button>
+                      </div>
+                    </details>
+                  ) : null}
                 </div>
               ) : (
                 <div className="mt-6 grid gap-5">
                   <div className="grid gap-5 2xl:grid-cols-2">
-                    <FormSection title="Variation Bundle">
-                      <Field label="Product Name"><input required className={inputClassName} value={variationDraft.productName} onChange={(event) => updateVariationDraft("productName", event.target.value)} placeholder="Cat Food Pouch x28" /></Field>
-                      <Field label="Variation Name"><input required className={inputClassName} value={variationDraft.variationName} onChange={(event) => updateVariationDraft("variationName", event.target.value)} placeholder="Flavor, Size, Color, Weight" /></Field>
-                      <Field label="Category"><input className={inputClassName} value={variationDraft.categoryName} onChange={(event) => updateVariationDraft("categoryName", event.target.value)} placeholder="Cat Food" /></Field>
+                    <FormSection title={variationDraft.variationGroupId ? "Main SKU" : "Main SKU With Types"}>
+                      <Field label="Product Name"><input required readOnly={Boolean(variationDraft.variationGroupId)} className={inputClassName} value={variationDraft.productName} onChange={(event) => updateVariationDraft("productName", event.target.value)} placeholder="Cat Food Pouch x28" /></Field>
+                      <Field label="Type Group"><input required readOnly={Boolean(variationDraft.variationGroupId)} className={inputClassName} value={variationDraft.variationName} onChange={(event) => updateVariationDraft("variationName", event.target.value)} placeholder="Flavor, Size, Color, Weight" /></Field>
+                      <Field label="Category"><CategoryDropdown value={variationDraft.categoryName} categories={categories} onChange={(value) => updateVariationDraft("categoryName", value)} onAdd={startCategoryAdd} onEdit={startCategoryEdit} {...categoryDropdownEditorProps} /></Field>
                       <label className="flex items-center justify-between gap-4 rounded-xl border-2 border-zinc-300 bg-white px-4 py-3 text-sm font-black tracking-[-0.02em] text-zinc-700 lg:col-span-2">
-                        Add Variation Images
+                        Add Type Images
                         <input type="checkbox" checked={variationDraft.addVariationImages} onChange={(event) => updateVariationDraft("addVariationImages", event.target.checked)} className="size-5 accent-lime" />
                       </label>
                     </FormSection>
@@ -738,10 +1080,10 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
 
                   <section className="rounded-2xl border border-white/50 bg-white/55 p-5 backdrop-blur-lg">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h3 className="text-sm font-black uppercase tracking-[0.14em] text-zinc-500">Variation Items</h3>
+                      <h3 className="text-sm font-black uppercase tracking-[0.14em] text-zinc-500">Types</h3>
                       <Button type="button" variant="outline" onClick={addVariationItem} className="h-10 rounded-lg border-border bg-white px-4 text-sm font-bold hover:bg-white">
                         <Plus className="size-4" />
-                        Add Item
+                        Add Type
                       </Button>
                     </div>
 
@@ -749,26 +1091,25 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
                       {variationDraft.items.map((item, index) => (
                         <div key={item.clientId} className="rounded-2xl border border-border bg-white p-4">
                           <div className="flex items-center justify-between gap-3">
-                            <div className="text-sm font-black text-zinc-500">Item {index + 1}</div>
-                            <button type="button" onClick={() => removeVariationItem(item.clientId)} disabled={variationDraft.items.length === 1} className="grid size-9 place-items-center rounded-lg border border-border text-zinc-500 disabled:opacity-40" aria-label="Remove variation item">
+                            <div className="text-sm font-black text-zinc-500">Type {index + 1}</div>
+                            <Button type="button" variant="outline" size="icon" onClick={() => removeVariationItem(item.clientId)} disabled={variationDraft.items.length === 1} aria-label="Remove type">
                               <Trash2 className="size-4" />
-                            </button>
+                            </Button>
                           </div>
                           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                            <Field label="Item Name"><input required className={inputClassName} value={item.name} onChange={(event) => updateVariationItem(item.clientId, "name", event.target.value)} placeholder="Junior Tuna x28" /></Field>
+                            <Field label="Type Name"><input required className={inputClassName} value={item.name} onChange={(event) => updateVariationItem(item.clientId, "name", event.target.value)} placeholder="Junior Tuna x28" /></Field>
                             <Field label="SKU ID"><input required className={inputClassName} value={item.skuCode} onChange={(event) => updateVariationItem(item.clientId, "skuCode", event.target.value.toUpperCase())} placeholder="FOOD-TUNA-X28" /></Field>
-                            <Field label="Price"><input required min={0} step="0.01" type="number" className={inputClassName} value={item.price} onChange={(event) => updateVariationItem(item.clientId, "price", Number(event.target.value))} /></Field>
-                            <Field label="Opening Stock"><input required min={0} type="number" className={inputClassName} value={item.openingStock} onChange={(event) => updateVariationItem(item.clientId, "openingStock", Number(event.target.value))} /></Field>
-                            <Field label="Low Alert"><input required min={0} type="number" className={inputClassName} value={item.lowStockQty} onChange={(event) => updateVariationItem(item.clientId, "lowStockQty", Number(event.target.value))} /></Field>
-                            <Field label="Full Stock"><input required min={0} type="number" className={inputClassName} value={item.maxStockQty} onChange={(event) => updateVariationItem(item.clientId, "maxStockQty", Number(event.target.value))} /></Field>
+                            <Field label="Price"><input required min={0} step="0.01" type="number" className={inputClassName} value={item.price} onChange={(event) => updateVariationItem(item.clientId, "price", event.target.value)} /></Field>
+                            <Field label="Starting Stock"><input required min={0} type="number" className={inputClassName} value={item.openingStock} onChange={(event) => updateVariationItem(item.clientId, "openingStock", event.target.value)} /></Field>
+                            <Field label="Low at"><input required min={0} type="number" className={inputClassName} value={item.lowStockQty} onChange={(event) => updateVariationItem(item.clientId, "lowStockQty", event.target.value)} /></Field>
                             {variationDraft.addVariationImages ? (
                               <label className="grid gap-2 text-sm font-black tracking-[-0.02em] text-zinc-700 md:col-span-2 xl:col-span-3">
-                                Variation Image
+                                Type Image
                                 <div className="flex items-center gap-3 rounded-xl border-2 border-dashed border-zinc-300 bg-zinc-50 px-4 py-3">
                                   <ImageIcon className="size-5 shrink-0 text-zinc-500" />
-                                  <span className="min-w-0 truncate text-sm font-semibold text-zinc-500">{item.photoFile ? item.photoFile.name : "Camera or gallery"}</span>
+                                  <span className="min-w-0 truncate text-sm font-semibold text-zinc-500">{item.photoFile ? item.photoFile.name : "Choose from gallery"}</span>
                                 </div>
-                                <input type="file" required accept="image/jpeg,image/png,image/webp,image/gif" capture="environment" className="sr-only" onChange={(event) => updateVariationItem(item.clientId, "photoFile", event.target.files?.[0] ?? null)} />
+                                <input type="file" required accept="image/jpeg,image/png,image/webp,image/gif" className="sr-only" onChange={(event) => updateVariationItem(item.clientId, "photoFile", event.target.files?.[0] ?? null)} />
                               </label>
                             ) : null}
                           </div>
@@ -779,11 +1120,11 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
                 </div>
               )}
 
-              <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
-                <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="h-12 rounded-lg border-border bg-white px-6 text-base font-semibold text-black hover:bg-white">Cancel</Button>
-                <Button disabled={isPending} className="h-12 rounded-lg bg-lime px-6 text-base font-bold text-black hover:bg-lime disabled:opacity-60">
-                  {isEditing ? <Save className="size-5" /> : <Plus className="size-5" />}
-                  {isPending ? "Saving..." : isEditing ? "Review SKU" : createMode === "variation" ? "Review Variation SKUs" : "Review SKU"}
+              <div className="mt-7 flex flex-col-reverse items-start gap-3 sm:flex-row sm:items-center sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
+                <Button disabled={isPending}>
+                  {isPending ? <LumaSpinner label="Saving SKU" /> : isEditing ? <Save className="size-5" /> : <Plus className="size-5" />}
+                  {isPending ? "Saving..." : isEditing ? "Review SKU" : createMode === "variation" ? "Review SKU Types" : "Review SKU"}
                 </Button>
               </div>
               </form>
@@ -798,9 +1139,17 @@ export function AdminSkuManager({ membership, rows, restockCount = 0 }: { member
           description={confirmation.description}
           records={confirmation.records}
           error={confirmError}
-          onCancel={() => setConfirmation(null)}
+          onCancel={() => {
+            confirmation.onCancel?.();
+            setConfirmation(null);
+          }}
           onConfirm={confirmation.onConfirm}
         />
+      ) : null}
+      {isPending || isPhotoPending ? (
+        <div className="pointer-events-none fixed inset-x-0 top-0 z-[60] flex justify-center pt-[calc(0.75rem+env(safe-area-inset-top))]">
+          <LumaSpinner className="size-14" label="Saving SKU" />
+        </div>
       ) : null}
     </main>
   );

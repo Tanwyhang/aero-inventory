@@ -21,7 +21,7 @@ const updateRestockStatusSchema = z.object({
 });
 
 export async function createRestockRequestAction(input: z.input<typeof createRestockRequestSchema>) {
-  await requireMembership();
+  const membership = await requireMembership();
   const parsed = createRestockRequestSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -29,6 +29,18 @@ export async function createRestockRequestAction(input: z.input<typeof createRes
   }
 
   const supabase = await createClient();
+  const { data: inventoryRow, error: inventoryError } = await supabase
+    .from("inventory_levels")
+    .select("id")
+    .eq("organization_id", membership.organization_id)
+    .eq("sku_id", parsed.data.skuId)
+    .eq("location_id", parsed.data.locationId)
+    .maybeSingle();
+
+  if (inventoryError || !inventoryRow) {
+    return { ok: false, error: "Inventory row is not available in the selected workspace." };
+  }
+
   const { error } = await supabase.rpc("create_restock_request", {
     p_sku_id: parsed.data.skuId,
     p_location_id: parsed.data.locationId,
@@ -61,6 +73,17 @@ export async function updateRestockStatusAction(input: { requestId: string; stat
   }
 
   const supabase = await createClient();
+  const { data: requestRow, error: requestError } = await supabase
+    .from("restock_requests")
+    .select("id")
+    .eq("id", parsed.data.requestId)
+    .eq("organization_id", membership.organization_id)
+    .maybeSingle();
+
+  if (requestError || !requestRow) {
+    return { ok: false, error: "Restock request is not available in the selected workspace." };
+  }
+
   const { error } = await supabase.rpc("update_restock_request_status", {
     p_request_id: parsed.data.requestId,
     p_status: parsed.data.status,

@@ -1,10 +1,31 @@
+import { redirect } from "next/navigation";
+
 import { InventoryDashboard } from "@/components/inventory-dashboard";
 import { requireMembership } from "@/lib/auth";
 import { withSignedSkuPhotoUrls } from "@/lib/sku-photos";
 import { createClient } from "@/lib/supabase/server";
 import type { AdminInventoryRow, StaffInventoryRow } from "@/types/database";
 
-export default async function Home() {
+export default async function Home({ searchParams }: { searchParams: Promise<{ code?: string }> }) {
+  const params = await searchParams;
+
+  if (params.code) {
+    const supabase = await createClient();
+    const { error } = await supabase.auth.exchangeCodeForSession(params.code);
+
+    if (!error) {
+      await supabase.rpc("claim_bootstrap_admin");
+      redirect("/workspaces");
+    }
+
+    console.error("Supabase root OAuth callback failed", {
+      message: error.message,
+      hasCode: Boolean(params.code),
+    });
+
+    redirect("/login?error=callback");
+  }
+
   const membership = await requireMembership();
   const supabase = await createClient();
   const [{ data: staffRows, error: staffError }, { data: adminRows, error: adminError }, { data: restockRequests, error: restockError }] = await Promise.all([

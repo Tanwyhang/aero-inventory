@@ -20,16 +20,22 @@ export default async function SkuPage() {
   }
 
   const supabase = await createClient();
-  const [{ data, error }, { data: restockRequests, error: restockError }] = await Promise.all([
+  const [{ data, error }, { data: restockRequests, error: restockError }, { data: categories, error: categoriesError }] = await Promise.all([
     supabase.rpc("get_admin_sku_manager_rows", { p_organization_id: membership.organization_id }),
     supabase.rpc("get_admin_restock_requests", { p_organization_id: membership.organization_id }),
+    supabase
+      .from("product_categories")
+      .select("id, name")
+      .eq("organization_id", membership.organization_id)
+      .is("archived_at", null)
+      .order("name", { ascending: true }),
   ]);
 
-  if (error || restockError) {
-    throw new Error(error?.message ?? restockError?.message ?? "Failed to load SKUs");
+  if (error || restockError || categoriesError) {
+    throw new Error(error?.message ?? restockError?.message ?? categoriesError?.message ?? "Failed to load SKUs");
   }
 
   const rows = await withSignedSkuPhotoUrls((data ?? []) as AdminSkuManagerRow[]);
 
-  return <AdminSkuManager membership={membership} rows={rows} restockCount={(restockRequests ?? []).length} />;
+  return <AdminSkuManager membership={membership} rows={rows} categories={categories ?? []} restockCount={(restockRequests ?? []).length} />;
 }

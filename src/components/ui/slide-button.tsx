@@ -2,9 +2,10 @@
 
 import { forwardRef, useCallback, useMemo, useRef, useState, type JSX } from "react";
 import { AnimatePresence, motion, useMotionValue, useSpring, useTransform, type PanInfo } from "motion/react";
-import { Check, ChevronRight, Loader2, X } from "lucide-react";
+import { Check, ChevronRight, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { LumaSpinner } from "@/components/ui/luma-spinner";
 import { cn } from "@/lib/utils";
 
 const DRAG_CONSTRAINTS = { left: 0, right: 155 };
@@ -51,7 +52,7 @@ function DotMatrixIcon() {
 function StatusIcon({ status }: { status: "loading" | "success" | "error" }) {
   const iconMap: Record<typeof status, JSX.Element> = useMemo(
     () => ({
-      loading: <Loader2 className="animate-spin" size={20} />,
+      loading: <LumaSpinner label="Processing" />,
       success: <Check size={20} />,
       error: <X size={20} />,
     }),
@@ -80,6 +81,7 @@ export const SlideButton = forwardRef<HTMLButtonElement, SlideButtonProps>(funct
   const adjustedWidth = useTransform(springX, (x: number) => x + 10);
 
   const handleSubmit = useCallback(async () => {
+    if (status === "loading") return;
     setStatus("loading");
     try {
       await onComplete?.();
@@ -89,16 +91,17 @@ export const SlideButton = forwardRef<HTMLButtonElement, SlideButtonProps>(funct
       setCompleted(false);
       dragX.set(0);
     }
-  }, [dragX, onComplete]);
+  }, [dragX, onComplete, status]);
 
   function complete() {
-    if (completed || disabled) return;
+    if (completed || disabled || status === "loading") return;
     setCompleted(true);
+    dragX.set(DRAG_CONSTRAINTS.right);
     void handleSubmit();
   }
 
   function handleDragEnd() {
-    if (completed || disabled) return;
+    if (completed || disabled || status === "loading") return;
     setIsDragging(false);
 
     if (dragProgress.get() >= DRAG_THRESHOLD) complete();
@@ -106,7 +109,7 @@ export const SlideButton = forwardRef<HTMLButtonElement, SlideButtonProps>(funct
   }
 
   function handleDrag(_event: MouseEvent | TouchEvent | PointerEvent, info: PanInfo) {
-    if (completed || disabled) return;
+    if (completed || disabled || status === "loading") return;
     dragX.set(Math.max(0, Math.min(info.offset.x, DRAG_CONSTRAINTS.right)));
   }
 
@@ -114,7 +117,7 @@ export const SlideButton = forwardRef<HTMLButtonElement, SlideButtonProps>(funct
     <motion.div
       animate={completed ? BUTTON_STATES.completed : BUTTON_STATES.initial}
       transition={ANIMATION_CONFIG.spring}
-      className="shadow-button-inset relative flex h-16 items-center justify-center rounded-full bg-zinc-100"
+      className="shadow-button-inset relative flex h-14 items-center justify-center rounded-full bg-zinc-100 sm:h-16"
     >
       {!completed ? <motion.div style={{ width: adjustedWidth }} className="absolute inset-y-0 left-0 z-0 rounded-full bg-lime" /> : null}
       <AnimatePresence>
@@ -129,7 +132,7 @@ export const SlideButton = forwardRef<HTMLButtonElement, SlideButtonProps>(funct
             onDragEnd={handleDragEnd}
             onDrag={handleDrag}
             style={{ x: springX }}
-              className="absolute -left-5 z-10 flex cursor-grab items-center justify-start active:cursor-grabbing"
+              className="absolute -left-4 z-10 flex cursor-grab items-center justify-start active:cursor-grabbing sm:-left-5"
           >
             <Button
               ref={ref}
@@ -141,7 +144,7 @@ export const SlideButton = forwardRef<HTMLButtonElement, SlideButtonProps>(funct
               }}
               {...props}
               size="icon"
-              className={cn("shadow-button size-16 rounded-full bg-black text-lime drop-shadow-xl hover:bg-black", isDragging && "scale-105 transition-transform", className)}
+              className={cn("shadow-button size-14 rounded-full bg-black text-lime drop-shadow-xl hover:bg-black sm:size-16", isDragging && "scale-105 transition-transform", className)}
             >
               <DotMatrixIcon />
             </Button>
@@ -151,14 +154,15 @@ export const SlideButton = forwardRef<HTMLButtonElement, SlideButtonProps>(funct
       <AnimatePresence>
         {completed ? (
           <motion.div className="absolute inset-0 flex items-center justify-center" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-            <Button disabled={status === "loading"} className={cn("size-full rounded-full bg-black text-lime transition-all duration-300 hover:bg-black", className)}>
+            <Button disabled className={cn("size-full rounded-full bg-black text-lime transition-all duration-300 hover:bg-black disabled:opacity-100", className)}>
               <AnimatePresence mode="wait">{status !== "idle" ? <StatusIcon status={status} /> : null}</AnimatePresence>
             </Button>
+            {status === "loading" ? <span className="absolute top-full mt-2 text-xs font-black uppercase tracking-[0.12em] text-zinc-500">Processing</span> : null}
           </motion.div>
         ) : null}
       </AnimatePresence>
       {!completed ? (
-        <span className="pointer-events-none absolute inset-0 flex items-center justify-center gap-2 pl-12 text-sm font-black uppercase tracking-[0.14em] text-black/65">
+        <span className="pointer-events-none absolute inset-0 flex items-center justify-center gap-1.5 pl-10 text-xs font-black uppercase tracking-[0.12em] text-black/65 sm:gap-2 sm:pl-12 sm:text-sm sm:tracking-[0.14em]">
           Confirm
           <span className="flex items-center text-black/45">
             <ChevronRight className="size-4" />

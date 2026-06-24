@@ -17,16 +17,16 @@ export function ReportsAreaChart({ data }: { data: ReportsAreaDatum[] }) {
   const trend = previous > 0 ? Math.round(((latest - previous) / previous) * 100) : null;
 
   return (
-    <FluidEntrySurface className="mt-8 rounded-3xl border border-lime/35 bg-lime/10 backdrop-blur-2xl" contentClassName="p-6">
+    <FluidEntrySurface className="mt-5 rounded-2xl border border-lime/35 bg-lime/10 backdrop-blur-2xl sm:mt-8 sm:rounded-3xl" contentClassName="p-3 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h2 className="text-2xl font-black tracking-[-0.05em]">Stock In/Out Volume</h2>
-          <p className="mt-1 text-sm font-semibold text-zinc-500">Monthly inbound and outbound stock movement volume.</p>
+          <h2 className="text-lg font-black tracking-[-0.05em] sm:text-2xl">Stock In/Out Volume</h2>
+          <p className="mt-1 text-xs font-semibold text-zinc-500 sm:text-sm">Monthly inbound and outbound stock movement volume.</p>
         </div>
-        <div className="rounded-full bg-lime px-4 py-2 text-sm font-black text-black">{total} units moved</div>
+        <div className="rounded-full bg-lime px-2.5 py-1.5 text-[11px] font-black text-black sm:px-4 sm:py-2 sm:text-sm">{total} units moved</div>
       </div>
 
-      <div className="mt-6 h-[220px] min-w-0 w-full sm:h-[280px]">
+      <div className="mt-3 h-[170px] min-w-0 w-full sm:mt-6 sm:h-[280px]">
         <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={220}>
           <AreaChart data={data} margin={{ left: 8, right: 8, top: 12, bottom: 0 }}>
             <CartesianGrid vertical={false} stroke="rgba(24,24,27,0.1)" />
@@ -47,7 +47,7 @@ export function ReportsAreaChart({ data }: { data: ReportsAreaDatum[] }) {
         </ResponsiveContainer>
       </div>
 
-      <div className="mt-5 flex items-center gap-2 text-sm font-bold text-zinc-600">
+      <div className="mt-3 flex items-center gap-2 text-xs font-bold text-zinc-600 sm:mt-5 sm:text-sm">
         {trend === null ? "Add more monthly data to show trend" : `${trend >= 0 ? "Trending up" : "Trending down"} by ${Math.abs(trend)}% this month`}
         {trend !== null ? <TrendingUp className="size-4 text-black" /> : null}
       </div>

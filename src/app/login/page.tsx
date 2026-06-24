@@ -23,7 +23,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
   const params = await searchParams;
 
   if (membership) {
-    redirect("/");
+    redirect("/workspaces");
   }
 
   return (

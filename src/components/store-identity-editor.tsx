@@ -2,9 +2,15 @@
 
 import { useState } from "react";
 import { Bone, Cat, Dog, Fish, PawPrint, Pencil } from "lucide-react";
+import { updateWorkspaceIdentityAction } from "@/app/actions/workspaces";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { WorkspaceActionButton } from "@/components/workspace-action-button";
 import { cn } from "@/lib/utils";
 
-const storeIcons = [
+export const storeIcons = [
   { label: "Paw", icon: PawPrint },
   { label: "Bone", icon: Bone },
   { label: "Dog", icon: Dog },
@@ -25,65 +31,57 @@ export function StoreIdentityEditor({
 }) {
   const initialIconIndex = Math.max(0, storeIcons.findIndex((item) => item.label === initialIcon));
   const [iconIndex, setIconIndex] = useState(initialIconIndex);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const ActiveIcon = storeIcons[iconIndex].icon;
+  const [isOpen, setIsOpen] = useState(false);
+  const [name, setName] = useState(initialName);
 
   return (
     <div className="mt-3 flex flex-wrap items-center gap-3 text-xl font-semibold tracking-[-0.035em]">
-      <div className="relative">
-        <button
-          type="button"
-          className="rounded-md outline-none transition hover:scale-105 focus-visible:ring-2 focus-visible:ring-lime focus-visible:ring-offset-2"
-          aria-label={`Store icon: ${storeIcons[iconIndex].label}. Open icon menu.`}
-          aria-expanded={isMenuOpen}
-          title="Choose store icon"
-          disabled={readOnly}
-          onClick={() => !readOnly && setIsMenuOpen(!isMenuOpen)}
-        >
-          <ActiveIcon className="size-7 fill-black stroke-black" />
-        </button>
-
-        {isMenuOpen && !readOnly ? (
-          <div className="absolute left-0 top-10 z-20 grid w-48 gap-1 rounded-xl border border-white/50 bg-white/85 p-2 backdrop-blur-2xl">
-            {storeIcons.map((item, index) => {
-              const Icon = item.icon;
-
-              return (
-                <button
-                  key={item.label}
-                  type="button"
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-semibold text-black outline-none transition hover:bg-zinc-100 focus-visible:ring-2 focus-visible:ring-lime",
-                    index === iconIndex && "bg-lime",
-                  )}
-                  onClick={() => {
-                    setIconIndex(index);
-                    setIsMenuOpen(false);
-                  }}
-                >
-                  <Icon className="size-5 fill-black stroke-black" />
-                  {item.label}
-                </button>
-              );
-            })}
-          </div>
-        ) : null}
-      </div>
-
-      <label className="flex min-w-0 items-center gap-2">
-        <input
-          aria-label="Store name"
-          readOnly={readOnly}
-          className="w-full max-w-[260px] min-w-0 bg-transparent font-semibold text-black outline-none transition placeholder:text-zinc-400 focus:border-b focus:border-black"
-          defaultValue={initialName}
-        />
-        {readOnly ? null : <Pencil className="size-4 stroke-[2.4] text-zinc-500" aria-hidden="true" />}
-      </label>
+      <button
+        type="button"
+        disabled={readOnly || !workspaceId}
+        onClick={() => setIsOpen(true)}
+        className={cn(
+          "flex min-w-0 items-center gap-3 rounded-xl text-left outline-none transition focus-visible:ring-2 focus-visible:ring-lime focus-visible:ring-offset-2",
+          !readOnly && workspaceId && "hover:bg-zinc-100 hover:px-2 hover:py-1",
+        )}
+      >
+        <span className="min-w-0 truncate font-semibold text-black">{name}</span>
+        {readOnly ? null : <Pencil className="size-4 shrink-0 stroke-[2.4] text-zinc-500" aria-hidden="true" />}
+      </button>
 
       {workspaceId ? (
         <span className="rounded-full border border-border bg-zinc-50 px-3 py-1 text-xs font-black uppercase tracking-[0.08em] text-zinc-500" title={workspaceId}>
-          ID {workspaceId.slice(0, 8)}
+          ID {workspaceId.split("-").at(-1)}
         </span>
+      ) : null}
+
+      {workspaceId ? (
+        <Dialog open={isOpen} onOpenChange={setIsOpen}>
+          <DialogContent className="max-w-[22rem] rounded-3xl sm:max-w-md">
+            <div>
+              <DialogTitle className="text-2xl font-black tracking-[-0.05em]">Edit workspace</DialogTitle>
+              <DialogDescription className="mt-1 text-sm font-semibold text-zinc-500">Update the store name and icon shown across Aero.</DialogDescription>
+            </div>
+            <form action={updateWorkspaceIdentityAction} className="grid gap-4">
+              <input type="hidden" name="organizationId" value={workspaceId} />
+              <input type="hidden" name="returnTo" value="/" />
+              <label className="grid gap-2 text-sm font-black text-zinc-700">
+                Workspace name
+                <Input name="name" required value={name} onChange={(event) => setName(event.target.value)} className="h-12 rounded-xl font-bold" />
+              </label>
+              <label className="grid gap-2 text-sm font-black text-zinc-700">
+                Icon
+                <NativeSelect name="icon" value={storeIcons[iconIndex].label} onChange={(event) => setIconIndex(Math.max(0, storeIcons.findIndex((item) => item.label === event.target.value)))} className="h-12 rounded-xl bg-white font-bold">
+                  {storeIcons.map((item) => <NativeSelectOption key={item.label} value={item.label}>{item.label}</NativeSelectOption>)}
+                </NativeSelect>
+              </label>
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <Button type="button" variant="outline" onClick={() => setIsOpen(false)} className="h-11 rounded-xl bg-white font-black">Cancel</Button>
+                <WorkspaceActionButton confirm="Click Confirm to update this workspace." className="h-11 rounded-xl bg-lime px-5 font-black text-black hover:bg-lime">Save</WorkspaceActionButton>
+              </div>
+            </form>
+          </DialogContent>
+        </Dialog>
       ) : null}
     </div>
   );

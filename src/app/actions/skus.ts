@@ -37,6 +37,7 @@ const variationItemSchema = z.object({
 });
 
 const variationGroupSchema = z.object({
+  variationGroupId: z.string().uuid().optional(),
   productName: z.string().trim().min(1).max(160),
   variationName: z.string().trim().min(1).max(80),
   addVariationImages: z.boolean(),
@@ -46,6 +47,14 @@ const variationGroupSchema = z.object({
   country: z.enum(["MY", "TH"]),
   phoneRaw: z.string().trim().min(5).max(60),
   items: z.array(variationItemSchema).min(1).max(100),
+});
+
+const categorySchema = z.object({
+  name: z.string().trim().min(1).max(120),
+});
+
+const updateCategorySchema = categorySchema.extend({
+  categoryId: z.string().uuid(),
 });
 
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024;
@@ -121,6 +130,46 @@ export async function createSkuAction(input: z.input<typeof skuSchema>) {
   return { ok: true, skuId };
 }
 
+export async function createProductCategoryAction(input: z.input<typeof categorySchema>) {
+  const membership = await requireMembership();
+  if (membership.role !== "admin") return { ok: false, error: "Admin access required." };
+
+  const parsed = categorySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Enter a valid category name." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("admin_upsert_product_category", {
+    p_organization_id: membership.organization_id,
+    p_name: parsed.data.name,
+  });
+
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/sku");
+  revalidatePath("/");
+  revalidatePath("/partner-share");
+  return { ok: true, categoryId: data };
+}
+
+export async function updateProductCategoryAction(input: z.input<typeof updateCategorySchema>) {
+  const membership = await requireMembership();
+  if (membership.role !== "admin") return { ok: false, error: "Admin access required." };
+
+  const parsed = updateCategorySchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Enter a valid category name." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("admin_update_product_category", {
+    p_category_id: parsed.data.categoryId,
+    p_name: parsed.data.name,
+  });
+
+  if (error) return { ok: false, error: error.message };
+  revalidatePath("/sku");
+  revalidatePath("/");
+  revalidatePath("/partner-share");
+  return { ok: true };
+}
+
 export async function updateSkuAction(input: z.input<typeof skuSchema>) {
   const membership = await requireMembership();
   if (membership.role !== "admin") return { ok: false, error: "Admin access required." };
@@ -183,14 +232,28 @@ export async function createVariationGroupAction(formData: FormData) {
 
   const supabase = await createClient();
   const whatsapp = normalizeWhatsAppNumber(parsed.data.country, parsed.data.phoneRaw);
-  const { data: groupId, error: groupError } = await supabase.rpc("admin_create_sku_variation_group", {
-    p_organization_id: membership.organization_id,
-    p_product_name: parsed.data.productName,
-    p_variation_name: parsed.data.variationName,
-    p_add_variation_images: parsed.data.addVariationImages,
-  });
+  let groupId = parsed.data.variationGroupId;
 
-  if (groupError || !groupId) return { ok: false, error: groupError?.message ?? "Variation group creation failed." };
+  if (groupId) {
+    const { data: groupRow, error: groupLookupError } = await supabase
+      .from("sku_variation_groups")
+      .select("id")
+      .eq("id", groupId)
+      .eq("organization_id", membership.organization_id)
+      .maybeSingle();
+
+    if (groupLookupError || !groupRow) return { ok: false, error: "Variation group is not available in the selected workspace." };
+  } else {
+    const { data, error: groupError } = await supabase.rpc("admin_create_sku_variation_group", {
+      p_organization_id: membership.organization_id,
+      p_product_name: parsed.data.productName,
+      p_variation_name: parsed.data.variationName,
+      p_add_variation_images: parsed.data.addVariationImages,
+    });
+
+    if (groupError || !data) return { ok: false, error: groupError?.message ?? "Variation group creation failed." };
+    groupId = data;
+  }
 
   for (const item of parsed.data.items) {
     const { data: skuId, error } = await supabase.rpc("admin_create_sku", {

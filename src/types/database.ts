@@ -19,7 +19,10 @@ export type Database = {
           id: string;
           name: string;
           icon: string;
+          slug: string | null;
           default_country: string;
+          created_by: string | null;
+          archived_at: string | null;
           created_at: string;
           updated_at: string;
         };
@@ -40,7 +43,38 @@ export type Database = {
           user_id: string;
           role: "admin" | "staff";
           status: "active" | "invited" | "disabled";
+          invited_by: string | null;
+          accepted_at: string | null;
+          disabled_at: string | null;
+          last_accessed_at: string | null;
           created_at: string;
+          updated_at: string;
+        };
+      };
+      user_workspace_preferences: {
+        Row: {
+          user_id: string;
+          last_organization_id: string | null;
+          updated_at: string;
+        };
+      };
+      organization_invites: {
+        Row: {
+          id: string;
+          organization_id: string;
+          email: string | null;
+          role: "admin" | "staff";
+          token_hash: string;
+          invite_token: string | null;
+          max_uses: number;
+          use_count: number;
+          expires_at: string;
+          revoked_at: string | null;
+          created_by: string | null;
+          accepted_by: string | null;
+          accepted_at: string | null;
+          created_at: string;
+          updated_at: string;
         };
       };
       locations: {
@@ -186,6 +220,46 @@ export type Database = {
           full_name: string;
         }[];
       };
+      get_my_workspaces: {
+        Args: Record<PropertyKey, never>;
+        Returns: WorkspaceMembership[];
+      };
+      set_last_workspace: {
+        Args: { p_organization_id: string };
+        Returns: string;
+      };
+      create_workspace: {
+        Args: { p_name: string; p_icon?: string; p_default_country?: "MY" | "TH" };
+        Returns: string;
+      };
+      admin_invite_workspace_member: {
+        Args: { p_organization_id: string; p_email: string; p_role?: "admin" | "staff"; p_expires_in_days?: number };
+        Returns: WorkspaceInviteTokenRow[];
+      };
+      accept_workspace_invite: {
+        Args: { p_token: string };
+        Returns: string;
+      };
+      admin_list_workspace_members: {
+        Args: { p_organization_id: string };
+        Returns: WorkspaceMemberRow[];
+      };
+      admin_list_workspace_invites: {
+        Args: { p_organization_id: string };
+        Returns: WorkspaceInviteRow[];
+      };
+      admin_update_workspace_member_role: {
+        Args: { p_organization_id: string; p_user_id: string; p_role: "admin" | "staff" };
+        Returns: string;
+      };
+      admin_set_workspace_member_status: {
+        Args: { p_organization_id: string; p_user_id: string; p_status: "active" | "invited" | "disabled" };
+        Returns: string;
+      };
+      admin_revoke_workspace_invite: {
+        Args: { p_invite_id: string };
+        Returns: string;
+      };
       get_staff_inventory_overview: {
         Args: { p_organization_id: string };
         Returns: StaffInventoryRow[];
@@ -238,6 +312,10 @@ export type Database = {
         Args: { p_organization_id: string; p_name: string };
         Returns: string;
       };
+      admin_update_product_category: {
+        Args: { p_category_id: string; p_name: string };
+        Returns: string;
+      };
       get_partner_share_page_data: {
         Args: { p_organization_id: string };
         Returns: Json;
@@ -282,6 +360,10 @@ export type Database = {
         Args: { p_sheet_id: string };
         Returns: string;
       };
+      admin_record_partner_share_output: {
+        Args: { p_sheet_id: string; p_output_type: "whatsapp_copy" | "excel_export" };
+        Returns: string;
+      };
     };
     Enums: {
       member_role: "admin" | "staff";
@@ -321,9 +403,59 @@ export type Membership = {
   organization_id: string;
   organization_name: string;
   organization_icon: string;
+  organization_slug: string | null;
   role: "admin" | "staff";
   user_email: string;
   full_name: string | null;
+  workspaces: WorkspaceMembership[];
+};
+
+export type WorkspaceMembership = {
+  organization_id: string;
+  organization_name: string;
+  organization_icon: string;
+  organization_slug: string | null;
+  role: "admin" | "staff";
+  status: "active" | "invited" | "disabled";
+  user_email: string | null;
+  full_name: string | null;
+  last_accessed_at: string | null;
+  is_last_workspace: boolean;
+  created_at: string;
+};
+
+export type WorkspaceMemberRow = {
+  user_id: string;
+  email: string | null;
+  full_name: string | null;
+  role: "admin" | "staff";
+  status: "active" | "invited" | "disabled";
+  invited_by: string | null;
+  accepted_at: string | null;
+  disabled_at: string | null;
+  last_accessed_at: string | null;
+  created_at: string;
+};
+
+export type WorkspaceInviteRow = {
+  id: string;
+  email: string | null;
+  role: "admin" | "staff";
+  invite_token: string | null;
+  expires_at: string;
+  revoked_at: string | null;
+  accepted_at: string | null;
+  use_count: number;
+  max_uses: number;
+  created_at: string;
+};
+
+export type WorkspaceInviteTokenRow = {
+  invite_id: string;
+  token: string;
+  email: string;
+  role: "admin" | "staff";
+  expires_at: string;
 };
 
 export type RestockStatus = "open" | "acknowledged" | "ordered" | "resolved" | "cancelled";
@@ -346,6 +478,7 @@ export type RestockRequestRow = {
 
 export type AdminSkuManagerRow = {
   sku_id: string;
+  location_id: string;
   product_name: string;
   variant: string | null;
   sku_code: string;

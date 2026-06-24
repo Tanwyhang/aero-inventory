@@ -105,7 +105,7 @@ function ActorLabel({ role, name }: { role: ActorRole; name: string | null }) {
 
 function TinyThumb({ label, photoUrl }: { label: string; photoUrl?: string | null }) {
   return (
-    <div className="relative size-10 shrink-0 overflow-hidden rounded-xl border border-white bg-white ring-1 ring-black/5 sm:size-8 sm:rounded-lg">
+    <div className="relative size-8 shrink-0 overflow-hidden rounded-lg border border-white bg-white ring-1 ring-black/5 sm:size-8 sm:rounded-lg">
       {photoUrl ? (
         <Image src={photoUrl} alt="" aria-hidden="true" fill loading="lazy" sizes="32px" className="object-cover" />
       ) : (
@@ -120,15 +120,14 @@ function ReportRow({ thumb, primary, secondary, badge, onClick }: { thumb?: Reac
     <>
       {thumb}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[15px] font-black tracking-[-0.035em] sm:text-sm">{primary}</div>
-        <div className="mt-0.5 line-clamp-2 text-xs font-bold leading-snug text-zinc-500 sm:truncate">{secondary}</div>
-        {badge ? <div className="mt-2 inline-flex max-w-full rounded-full bg-zinc-100 px-2 py-0.5 text-[11px] font-black capitalize leading-tight text-zinc-600 sm:hidden">{badge}</div> : null}
+        <div className="truncate text-sm font-black tracking-[-0.035em]">{primary}</div>
+        <div className="mt-0.5 line-clamp-2 text-[11px] font-bold leading-snug text-zinc-500 sm:text-xs">{secondary}</div>
+        {badge ? <div className="mt-1.5 inline-flex max-w-full rounded-full bg-zinc-100 px-2 py-0.5 text-[10px] font-black capitalize leading-tight text-zinc-600 sm:mt-2 sm:text-[11px]">{badge}</div> : null}
       </div>
-      {badge ? <div className="hidden max-w-[140px] shrink-0 rounded-full bg-zinc-100 px-2 py-0.5 text-center text-[11px] font-black capitalize leading-tight text-zinc-600 sm:block">{badge}</div> : null}
     </>
   );
 
-  const className = "liquid-width-enter flex min-h-[68px] w-full items-center gap-3 rounded-2xl border border-white/50 bg-white/65 px-3 py-3 text-left shadow-sm shadow-black/5 backdrop-blur-lg transition hover:bg-white/80 sm:min-h-12 sm:rounded-xl sm:px-2.5 sm:py-0 sm:shadow-none";
+  const className = "liquid-width-enter flex min-h-[64px] w-full items-start gap-2.5 rounded-xl border border-white/50 bg-white/65 px-2.5 py-2.5 text-left shadow-sm shadow-black/5 backdrop-blur-lg transition hover:bg-white/80 sm:min-h-[76px] sm:rounded-xl sm:px-2.5 sm:py-3 sm:shadow-none";
 
   if (!onClick) {
     return <div className={className}>{content}</div>;
@@ -143,14 +142,14 @@ function ReportRow({ thumb, primary, secondary, badge, onClick }: { thumb?: Reac
 
 function ListModal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 grid items-end bg-black/45 p-0 backdrop-blur-sm sm:place-items-center sm:px-4" onClick={onClose} role="dialog" aria-modal="true">
-      <FluidEntrySurface className="max-w-2xl rounded-t-3xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="min-h-0" wrapperClassName="w-full max-w-2xl" onClick={(event) => event.stopPropagation()}>
-        <div className="border-b border-border p-5">
+    <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true">
+      <FluidEntrySurface className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="min-h-0" wrapperClassName="w-full max-w-[22rem] sm:max-w-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="border-b border-border p-4 sm:p-5">
           <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-400">Report Records</div>
-          <h3 className="mt-1 text-2xl font-black tracking-[-0.05em]">{title}</h3>
+          <h3 className="mt-1 text-xl font-black tracking-[-0.05em] sm:text-2xl">{title}</h3>
           <p className="mt-1 text-xs font-bold text-zinc-500">Tap a record for details. Tap outside to close.</p>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto p-4">
+        <div className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-8rem)] overflow-y-auto p-3 sm:p-4">
           <div className="grid gap-2">{children}</div>
         </div>
       </FluidEntrySurface>
@@ -160,21 +159,21 @@ function ListModal({ title, children, onClose }: { title: string; children: Reac
 
 function DetailModal({ detail, onClose }: { detail: Detail; onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 grid items-end bg-black/45 p-0 backdrop-blur-sm sm:place-items-center sm:px-4" role="dialog" aria-modal="true" onClick={onClose}>
-      <FluidEntrySurface className="max-w-2xl rounded-t-3xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="min-h-0" wrapperClassName="w-full max-w-2xl" onClick={(event) => event.stopPropagation()}>
-        <div className="flex items-start justify-between gap-4 border-b border-border p-5">
+    <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
+      <FluidEntrySurface className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="min-h-0" wrapperClassName="w-full max-w-[22rem] sm:max-w-2xl" onClick={(event) => event.stopPropagation()}>
+        <div className="flex items-start justify-between gap-3 border-b border-border p-4 sm:gap-4 sm:p-5">
           <div className="flex min-w-0 items-center gap-3">
             {"photoUrl" in detail ? <TinyThumb label={detail.label} photoUrl={detail.photoUrl} /> : <TinyThumb label={detail.label} />}
             <div className="min-w-0">
               <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-400">{detail.kind}</div>
-              <h3 className="truncate text-2xl font-black tracking-[-0.05em]">{detail.title}</h3>
+              <h3 className="truncate text-xl font-black tracking-[-0.05em] sm:text-2xl">{detail.title}</h3>
             </div>
           </div>
           <button type="button" onClick={onClose} className="grid size-9 shrink-0 place-items-center rounded-full bg-zinc-100 text-black hover:bg-zinc-200" aria-label="Close detail">
             <X className="size-5" />
           </button>
         </div>
-        <div className="max-h-[70vh] overflow-y-auto p-5">
+        <div className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-8rem)] overflow-y-auto p-4 sm:p-5">
           <div className="grid gap-3">
             {detail.rows.map((row) => {
               const value = formatValue(row.value);
@@ -199,10 +198,10 @@ export function ReportsActivityLists({ movements, restocks, audits }: { movement
 
   return (
     <>
-      <div className="mt-8 grid gap-6 xl:grid-cols-3">
-        <FluidEntrySurface entryDelay={0} className="rounded-3xl border border-white/50 bg-white/60 backdrop-blur-2xl transition hover:border-zinc-300/80" contentClassName="p-5" role="button" tabIndex={0} onClick={() => setOpenList("movements")} onKeyDown={(event) => event.key === "Enter" && setOpenList("movements")}>
+      <div className="mt-5 grid gap-3 sm:mt-8 sm:gap-6 xl:grid-cols-3">
+        <FluidEntrySurface entryDelay={0} className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl transition hover:border-zinc-300/80 sm:rounded-3xl" contentClassName="p-3 sm:p-5" role="button" tabIndex={0} onClick={() => setOpenList("movements")} onKeyDown={(event) => event.key === "Enter" && setOpenList("movements")}>
           <div className="flex items-start justify-between gap-3">
-            <h2 className="text-2xl font-black tracking-[-0.05em]">Stock Movements</h2>
+            <h2 className="text-lg font-black tracking-[-0.05em] sm:text-2xl">Stock Movements</h2>
             <span className="rounded-full bg-black px-3 py-1 text-xs font-black text-lime">{movements.length}</span>
           </div>
           <div className="mt-4 grid gap-2">
@@ -220,9 +219,9 @@ export function ReportsActivityLists({ movements, restocks, audits }: { movement
           {movements.length > previewCount ? <div className="mt-3 text-center text-xs font-black uppercase tracking-[0.14em] text-zinc-400">Tap to view all</div> : null}
         </FluidEntrySurface>
 
-        <FluidEntrySurface entryDelay={0.08} className="rounded-3xl border border-white/50 bg-white/60 backdrop-blur-2xl transition hover:border-zinc-300/80" contentClassName="p-5" role="button" tabIndex={0} onClick={() => setOpenList("restocks")} onKeyDown={(event) => event.key === "Enter" && setOpenList("restocks")}>
+        <FluidEntrySurface entryDelay={0.08} className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl transition hover:border-zinc-300/80 sm:rounded-3xl" contentClassName="p-3 sm:p-5" role="button" tabIndex={0} onClick={() => setOpenList("restocks")} onKeyDown={(event) => event.key === "Enter" && setOpenList("restocks")}>
           <div className="flex items-start justify-between gap-3">
-            <h2 className="text-2xl font-black tracking-[-0.05em]">Restock Requests</h2>
+            <h2 className="text-lg font-black tracking-[-0.05em] sm:text-2xl">Restock Requests</h2>
             <span className="rounded-full bg-black px-3 py-1 text-xs font-black text-lime">{restocks.length}</span>
           </div>
           <div className="mt-4 grid gap-2">
@@ -240,9 +239,9 @@ export function ReportsActivityLists({ movements, restocks, audits }: { movement
           {restocks.length > previewCount ? <div className="mt-3 text-center text-xs font-black uppercase tracking-[0.14em] text-zinc-400">Tap to view all</div> : null}
         </FluidEntrySurface>
 
-        <FluidEntrySurface entryDelay={0.16} className="rounded-3xl border border-white/50 bg-white/60 backdrop-blur-2xl transition hover:border-zinc-300/80" contentClassName="p-5" role="button" tabIndex={0} onClick={() => setOpenList("audits")} onKeyDown={(event) => event.key === "Enter" && setOpenList("audits")}>
+        <FluidEntrySurface entryDelay={0.16} className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl transition hover:border-zinc-300/80 sm:rounded-3xl" contentClassName="p-3 sm:p-5" role="button" tabIndex={0} onClick={() => setOpenList("audits")} onKeyDown={(event) => event.key === "Enter" && setOpenList("audits")}>
           <div className="flex items-start justify-between gap-3">
-            <h2 className="text-2xl font-black tracking-[-0.05em]">Audit Events</h2>
+            <h2 className="text-lg font-black tracking-[-0.05em] sm:text-2xl">Audit Events</h2>
             <span className="rounded-full bg-black px-3 py-1 text-xs font-black text-lime">{audits.length}</span>
           </div>
           <div className="mt-4 grid gap-2">

@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { startTransition, useCallback, useEffect, useMemo, useOptimistic } from "react";
 import { useRouter } from "next/navigation";
-import { BarChart3, Box, Eye, Handshake, Package, RotateCcw } from "lucide-react";
+import { ArrowLeft, BarChart3, Box, Eye, Handshake, Package, RotateCcw } from "lucide-react";
 import { motion } from "motion/react";
 
 import aeroLogo from "../../design/logoword.png";
@@ -27,7 +27,7 @@ export function AppSidebar({
   onToggleStaffView,
   restockCount = 0,
 }: {
-  active: "stock" | "partner" | "restock" | "skus" | "reports";
+  active: NavKey;
   role?: "admin" | "staff";
   showStaffToggle?: boolean;
   isViewingAsStaff?: boolean;
@@ -73,7 +73,16 @@ export function AppSidebar({
         <Image src={aeroLogo} alt="Aero" className="h-auto w-32" priority />
       </div>
 
-      <nav className="flex w-full gap-2 overflow-x-auto lg:mt-16 lg:flex-col lg:gap-4 lg:overflow-visible">
+      <button
+        type="button"
+        onClick={() => router.push("/workspaces")}
+        className="mt-10 hidden w-full items-center gap-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-3 text-left text-sm font-black text-zinc-600 transition hover:border-black hover:bg-white hover:text-black lg:flex"
+      >
+        <ArrowLeft className="size-4" />
+        Switch workspace
+      </button>
+
+      <nav className="flex w-full gap-2 overflow-x-auto lg:mt-6 lg:flex-col lg:gap-4 lg:overflow-visible">
         {visibleNavItems.map((item) => {
           const Icon = item.icon;
 
@@ -122,7 +131,7 @@ export function AppSidebar({
         </div>
       ) : null}
     </aside>
-    <nav className="fixed inset-x-3 bottom-3 z-40 flex gap-1 rounded-3xl border border-border bg-white/95 p-1.5 shadow-2xl shadow-black/15 backdrop-blur-xl lg:hidden">
+    <nav className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40 flex gap-1 rounded-3xl border border-border bg-white/95 p-1.5 shadow-2xl shadow-black/15 backdrop-blur-xl lg:hidden">
       {visibleNavItems.map((item) => {
         const Icon = item.icon;
 
@@ -132,14 +141,14 @@ export function AppSidebar({
             type="button"
             onClick={() => navigateOptimistically(item)}
             className={cn(
-              "relative flex min-h-14 flex-1 flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl px-2 text-[11px] font-black transition",
+              "relative flex min-h-14 flex-1 flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl px-1 text-[10px] font-black transition",
               optimisticActive === item.key ? "text-lime" : "text-zinc-600",
             )}
           >
             {optimisticActive === item.key ? (
               <motion.span
                 layoutId="mobile-nav-active-pill"
-                className="absolute inset-0 rounded-2xl bg-black"
+                  className="absolute inset-0 rounded-2xl bg-black"
                 transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
               />
             ) : null}

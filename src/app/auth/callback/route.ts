@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const code = requestUrl.searchParams.get("code");
-  const next = requestUrl.searchParams.get("next") ?? "/";
+  const next = requestUrl.searchParams.get("next") ?? "/workspaces";
 
   if (code) {
     const supabase = await createClient();
@@ -15,6 +15,12 @@ export async function GET(request: NextRequest) {
       await supabase.rpc("claim_bootstrap_admin");
       return NextResponse.redirect(new URL(next, request.url));
     }
+
+    console.error("Supabase OAuth callback failed", {
+      message: error.message,
+      requestOrigin: requestUrl.origin,
+      hasCode: Boolean(code),
+    });
   }
 
   return NextResponse.redirect(new URL("/login?error=callback", request.url));
