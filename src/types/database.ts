@@ -383,6 +383,9 @@ export type StaffInventoryRow = {
   photo_path: string | null;
   photo_url?: string | null;
   price: number;
+  variation_group_id: string | null;
+  variation_name: string | null;
+  add_variation_images: boolean | null;
   quantity: number;
   low_stock_qty: number;
   max_stock_qty: number;

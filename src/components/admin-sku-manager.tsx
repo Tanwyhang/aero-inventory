@@ -640,8 +640,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
         const stockResult = await adjustStockAction({
           skuId: draft.skuId ?? "",
           locationId: draft.locationId,
-          direction: delta > 0 ? "add" : "deduct",
-          quantity: Math.abs(delta),
+          movement: delta,
           reason: DEFAULT_STOCK_ADJUSTMENT_REASON,
           note: "Updated from SKU edit modal",
         });

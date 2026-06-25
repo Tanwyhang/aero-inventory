@@ -32,7 +32,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { LumaSpinner } from "@/components/ui/luma-spinner";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "@/components/ui/toast";
 import { WhatsAppLink } from "@/components/whatsapp-link";
@@ -41,6 +40,26 @@ import { cn } from "@/lib/utils";
 import type { AdminInventoryRow, Membership, RestockRequestRow, RestockStatus, StaffInventoryRow } from "@/types/database";
 
 type InventoryRow = StaffInventoryRow | AdminInventoryRow;
+type StockMovementMode = "absolute" | "relative";
+type StockMovementDirection = "add" | "deduct";
+type StockFilter = "all" | "low" | "out";
+type StockAdjustmentTarget = { row: InventoryRow; direction: StockMovementDirection };
+
+type StockGroupEntry = {
+  type: "group";
+  id: string;
+  productName: string;
+  variationName: string;
+  rows: InventoryRow[];
+  totalQuantity: number;
+  totalLowStock: number;
+  isLowStock: boolean;
+  isOutOfStock: boolean;
+  photoUrl?: string | null;
+  autoExpanded: boolean;
+};
+
+type StockListEntry = StockGroupEntry | { type: "sku"; row: InventoryRow };
 
 const STAFF_VIEW_STORAGE_KEY = "aero:view-as-staff";
 
@@ -110,68 +129,188 @@ function stockStatus(row: InventoryRow) {
   return { label: "Good", className: "bg-lime/20 text-black ring-lime/30" };
 }
 
+function groupStatus(entry: StockGroupEntry) {
+  if (entry.isOutOfStock) return { label: "Check", className: "bg-red-50 text-red-600 ring-red-100" };
+  if (entry.isLowStock) return { label: "Low", className: "bg-orange/10 text-orange ring-orange/15" };
+  return { label: "Good", className: "bg-lime/20 text-black ring-lime/30" };
+}
+
+function rowMatchesFilter(row: InventoryRow, filter: StockFilter) {
+  if (filter === "low") return row.is_low_stock && !row.is_out_of_stock;
+  if (filter === "out") return row.is_out_of_stock;
+  return true;
+}
+
+function rowSearchText(row: InventoryRow) {
+  return [
+    row.product_name,
+    row.variant,
+    row.sku_code,
+    row.category_name,
+    row.variation_name,
+    row.location_name,
+    isAdminRow(row) ? row.supplier_name : null,
+    isAdminRow(row) ? row.contact_name : null,
+    isAdminRow(row) ? row.phone_raw : null,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function groupParentSearchText(rows: InventoryRow[]) {
+  const first = rows[0];
+  if (!first) return "";
+
+  return [
+    first.product_name,
+    first.category_name,
+    first.variation_name,
+    first.location_name,
+    isAdminRow(first) ? first.supplier_name : null,
+    isAdminRow(first) ? first.contact_name : null,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function buildStockEntries(rows: InventoryRow[], query: string, stockFilter: StockFilter, sortDirection: "asc" | "desc"): StockListEntry[] {
+  const normalizedQuery = query.trim().toLowerCase();
+  const grouped = new Map<string, InventoryRow[]>();
+  const singles: InventoryRow[] = [];
+
+  for (const row of rows) {
+    if (!row.variation_group_id) {
+      singles.push(row);
+      continue;
+    }
+
+    const groupRows = grouped.get(row.variation_group_id) ?? [];
+    groupRows.push(row);
+    grouped.set(row.variation_group_id, groupRows);
+  }
+
+  const entries: StockListEntry[] = [];
+
+  for (const [id, groupRows] of grouped) {
+    const parentMatchesSearch = !normalizedQuery || groupParentSearchText(groupRows).includes(normalizedQuery);
+    const childMatchesSearch = !normalizedQuery || groupRows.some((row) => rowSearchText(row).includes(normalizedQuery));
+    const matchesFilter = groupRows.some((row) => rowMatchesFilter(row, stockFilter));
+
+    if (!matchesFilter || (!parentMatchesSearch && !childMatchesSearch)) continue;
+
+    const first = groupRows[0];
+    const totalQuantity = groupRows.reduce((sum, row) => sum + row.quantity, 0);
+    const totalLowStock = groupRows.reduce((sum, row) => sum + row.low_stock_qty, 0);
+    const sortedRows = [...groupRows].sort((a, b) => `${a.variant ?? ""} ${a.sku_code}`.localeCompare(`${b.variant ?? ""} ${b.sku_code}`));
+
+    entries.push({
+      type: "group",
+      id,
+      productName: first?.product_name ?? "Product group",
+      variationName: first?.variation_name ?? "Variants",
+      rows: sortedRows,
+      totalQuantity,
+      totalLowStock,
+      isLowStock: groupRows.some((row) => row.is_low_stock && !row.is_out_of_stock),
+      isOutOfStock: groupRows.some((row) => row.is_out_of_stock),
+      photoUrl: groupRows.find((row) => row.photo_url)?.photo_url ?? first?.photo_url,
+      autoExpanded: Boolean(normalizedQuery && childMatchesSearch),
+    });
+  }
+
+  for (const row of singles) {
+    if (!rowMatchesFilter(row, stockFilter)) continue;
+    if (normalizedQuery && !rowSearchText(row).includes(normalizedQuery)) continue;
+    entries.push({ type: "sku", row });
+  }
+
+  return [...entries].sort((a, b) => {
+    const aStock = a.type === "group" ? a.totalQuantity : a.row.quantity;
+    const bStock = b.type === "group" ? b.totalQuantity : b.row.quantity;
+    return sortDirection === "asc" ? aStock - bStock : bStock - aStock;
+  });
+}
+
 function AdjustmentDialog({
   row,
+  direction: initialDirection,
   onClose,
 }: {
   row: InventoryRow;
-  direction: "add" | "deduct";
+  direction: StockMovementDirection;
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [movementDraft, setMovementDraft] = useState("0");
+  const [mode, setMode] = useState<StockMovementMode>("absolute");
+  const [relativeDirection, setRelativeDirection] = useState<StockMovementDirection>(initialDirection);
+  const [movementDraft, setMovementDraft] = useState(String(row.quantity));
   const [reason, setReason] = useState<StockAdjustmentReason>(DEFAULT_STOCK_ADJUSTMENT_REASON);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
-  const [isConfirming, setIsConfirming] = useState(false);
   const [isPending, setIsPending] = useState(false);
   const parsedMovement = Number(movementDraft);
-  const signedQuantity = Number.isFinite(parsedMovement) ? parsedMovement : 0;
-  const direction = signedQuantity >= 0 ? "add" : "deduct";
-  const quantity = Math.abs(signedQuantity);
+  const hasValidMovement = Number.isFinite(parsedMovement) && Number.isInteger(parsedMovement);
+  const signedQuantity = hasValidMovement
+    ? mode === "absolute"
+      ? parsedMovement - row.quantity
+      : parsedMovement < 0
+        ? parsedMovement
+        : relativeDirection === "deduct"
+          ? -parsedMovement
+          : parsedMovement
+    : 0;
   const nextStock = row.quantity + signedQuantity;
-  const sliderLimit = Math.max(row.quantity * 2, row.quantity + 10, 10);
-  const sliderValue = Math.max(0, Math.min(nextStock, sliderLimit));
+  const adjustmentLabel = signedQuantity > 0 ? `+${signedQuantity}` : String(signedQuantity);
+  const actionLabel = signedQuantity >= 0 ? "Add Stock" : "Deduct Stock";
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
-    setConfirmError(null);
+    if (!hasValidMovement) {
+      setError("Enter a whole stock number.");
+      return;
+    }
+    if (mode === "absolute" && parsedMovement < 0) {
+      setError("Target stock cannot be below zero.");
+      return;
+    }
     if (signedQuantity === 0) {
-      setError("Move the slider or enter a quantity.");
+      setError(mode === "absolute" ? "Target stock is already current stock." : "Enter a stock movement.");
       return;
     }
     if (nextStock < 0) {
       setError("Stock cannot go below zero.");
       return;
     }
-    setIsConfirming(true);
-  }
 
-  async function confirmStockMovement() {
-    setConfirmError(null);
+    const stockNote = mode === "absolute" ? [note.trim(), `Stock manually set to ${parsedMovement} (Adjustment: ${adjustmentLabel})`].filter(Boolean).join("\n") : note.trim();
+    if (stockNote.length > 500) {
+      setError("Note is too long after adding the stock adjustment audit note.");
+      return;
+    }
+
     setIsPending(true);
     const result = await adjustStockAction({
       skuId: row.sku_id,
       locationId: row.location_id,
-      direction,
-      quantity,
+      movement: signedQuantity,
       reason,
-      note,
+      note: stockNote,
     });
 
     setIsPending(false);
 
     if (!result.ok) {
       const message = result.error ?? "Stock update failed.";
-      setConfirmError(message);
+      setError(message);
       toast.error("Stock update failed", { description: message });
-      throw new Error(message);
+      return;
     }
 
     toast.success("Stock movement recorded", {
-      description: `${row.product_name}: ${signedQuantity > 0 ? "+" : ""}${signedQuantity} (${reason})`,
+      description: `${row.product_name}: ${adjustmentLabel} (${reason})`,
     });
     onClose();
     router.refresh();
@@ -195,36 +334,54 @@ function AdjustmentDialog({
           </div>
 
            <div className="mt-4 grid gap-3 sm:mt-6 sm:gap-4">
+             <div className="grid grid-cols-2 rounded-xl border border-border bg-zinc-50 p-1">
+               {(["absolute", "relative"] as const).map((item) => (
+                 <button
+                   key={item}
+                   type="button"
+                   onClick={() => {
+                     setMode(item);
+                     setMovementDraft(item === "absolute" ? String(row.quantity) : "0");
+                     setError(null);
+                   }}
+                   className={cn("h-11 rounded-lg px-3 text-xs font-black uppercase tracking-[0.1em] transition sm:text-sm", mode === item ? "bg-black text-lime" : "text-zinc-500 hover:text-black")}
+                 >
+                   {item === "absolute" ? "Set New Total" : "Adjust Qty"}
+                 </button>
+               ))}
+             </div>
+
              <div className="rounded-2xl border border-border bg-zinc-50 p-3 sm:p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-400">Movement</div>
-                   <div className={cn("mt-1 text-3xl font-black tracking-[-0.08em] sm:text-4xl", signedQuantity < 0 ? "text-red-600" : "text-black")}>{signedQuantity > 0 ? "+" : ""}{signedQuantity}</div>
-                </div>
-                <div className="text-right text-sm font-black text-zinc-500">
-                  <div>Current {row.quantity}</div>
-                  <div className={nextStock < 0 ? "text-red-600" : "text-black"}>After {nextStock}</div>
-                </div>
-              </div>
-              <Slider
-                min={0}
-                max={sliderLimit}
-                step={1}
-                value={[sliderValue]}
-                onValueChange={(value) => setMovementDraft(String((value[0] ?? row.quantity) - row.quantity))}
-                className="mt-4"
-                aria-label="Stock movement slider"
-              />
-              <div className="mt-2 flex justify-between text-[11px] font-black uppercase tracking-[0.12em] text-zinc-400">
-                <span>0</span>
-                <span>Current {row.quantity}</span>
-                <span>{sliderLimit}+</span>
-              </div>
-            </div>
-            <label className="grid gap-2 text-sm font-bold text-zinc-600">
-              Exact Movement
-                <Input required name="stock-movement" inputMode="numeric" type="number" value={movementDraft} onChange={(event) => setMovementDraft(event.target.value)} className="h-12 rounded-lg text-lg font-bold" />
-            </label>
+               <div className="flex items-center justify-between gap-3">
+                 <div>
+                   <div className="text-xs font-black uppercase tracking-[0.12em] text-zinc-400">Movement</div>
+                    <div className={cn("mt-1 text-3xl font-black tracking-[-0.08em] sm:text-4xl", signedQuantity < 0 ? "text-red-600" : "text-black")}>{signedQuantity > 0 ? "+" : ""}{signedQuantity}</div>
+                 </div>
+                 <div className="text-right text-sm font-black text-zinc-500">
+                   <div>Current {row.quantity}</div>
+                   <div className={nextStock < 0 ? "text-red-600" : "text-black"}>After {nextStock}</div>
+                 </div>
+               </div>
+             </div>
+             {mode === "relative" ? (
+               <div className="grid grid-cols-2 gap-2">
+                 {(["add", "deduct"] as const).map((item) => (
+                   <button
+                     key={item}
+                     type="button"
+                     onClick={() => setRelativeDirection(item)}
+                     className={cn("flex h-11 items-center justify-center gap-2 rounded-xl border text-sm font-black transition", relativeDirection === item ? "border-black bg-black text-lime" : "border-border bg-white text-zinc-600")}
+                   >
+                     {item === "add" ? <Plus className="size-4" /> : <Minus className="size-4" />}
+                     {item === "add" ? "Add" : "Deduct"}
+                   </button>
+                 ))}
+               </div>
+             ) : null}
+             <label className="grid gap-2 text-sm font-bold text-zinc-600">
+               {mode === "absolute" ? "Target Stock" : "Movement Quantity"}
+                <Input required min={mode === "absolute" ? 0 : undefined} name="stock-movement" inputMode="numeric" type="number" value={movementDraft} onChange={(event) => setMovementDraft(event.target.value)} className="h-12 rounded-lg text-lg font-bold" />
+             </label>
             <label className="grid gap-2 text-sm font-bold text-zinc-600">
               Reason
               <NativeSelect required name="stock-reason" value={reason} onChange={(event) => setReason(event.target.value as StockAdjustmentReason)} className="h-12 rounded-lg bg-white text-base font-bold">
@@ -237,41 +394,24 @@ function AdjustmentDialog({
               Note
               <Textarea name="stock-note" value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} autoComplete="off" className="min-h-24 rounded-lg font-semibold" placeholder="Optional notes for admin" />
             </label>
-            <div className="rounded-xl bg-zinc-50 p-4 text-sm font-semibold text-zinc-600">
-              Auto detected: <span className="text-black">{direction === "add" ? "Add Stock" : "Deduct Stock"}</span>
-            </div>
+             <div className="rounded-xl bg-zinc-50 p-4 text-sm font-semibold text-zinc-600">
+               Auto detected: <span className="text-black">{actionLabel}</span>
+               {mode === "absolute" ? <span className="block pt-1 text-xs text-zinc-500">Audit note will include: Stock manually set to {hasValidMovement ? parsedMovement : "-"} (Adjustment: {adjustmentLabel})</span> : null}
+             </div>
             {error ? <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">{error}</div> : null}
           </div>
 
            <div className="mt-5 flex flex-col-reverse gap-2 sm:mt-6 sm:flex-row sm:justify-end sm:gap-3">
              <Button type="button" variant="outline" onClick={onClose} className="h-11 rounded-lg bg-white px-5 text-sm font-bold hover:bg-white sm:h-12 sm:px-6 sm:text-base">Cancel</Button>
-              <Button disabled={isPending} className="h-11 rounded-lg bg-lime px-5 text-sm font-bold text-black hover:bg-lime disabled:opacity-60 sm:h-12 sm:px-6 sm:text-base">
-               {isPending ? <LumaSpinner label="Saving movement" /> : null}
-               {isPending ? "Saving..." : "Review Movement"}
-             </Button>
-          </div>
-          </form>
-        </FluidEntrySurface>
-        <p className="mt-3 text-center text-xs font-bold text-white/80">Click anywhere to close</p>
-      </div>
-      {isConfirming ? (
-        <ConfirmSlideSheet
-          title={direction === "add" ? "Confirm Add Stock" : "Confirm Deduct Stock"}
-          description="This stock movement will be written to the audit trail and inventory history."
-          records={[
-            { label: "Product", value: row.product_name },
-            { label: "SKU", value: row.sku_code },
-            { label: "Movement", value: signedQuantity > 0 ? `+${signedQuantity}` : signedQuantity },
-            { label: "Reason", value: reason },
-            { label: "Before", value: row.quantity },
-            { label: "After", value: Number.isFinite(nextStock) ? nextStock : row.quantity },
-            { label: "Note", value: note },
-          ]}
-          error={confirmError}
-          onCancel={() => setIsConfirming(false)}
-          onConfirm={confirmStockMovement}
-        />
-      ) : null}
+              <Button type="submit" disabled={isPending} className="h-11 rounded-lg bg-lime px-5 text-sm font-bold text-black hover:bg-lime disabled:opacity-60 sm:h-12 sm:px-6 sm:text-base">
+                {isPending ? <LumaSpinner label="Saving movement" /> : null}
+                {isPending ? "Saving..." : "Confirm Adjustment"}
+              </Button>
+           </div>
+           </form>
+         </FluidEntrySurface>
+         <p className="mt-3 text-center text-xs font-bold text-white/80">Click anywhere to close</p>
+       </div>
     </div>
   );
 }
@@ -503,6 +643,250 @@ export function RestockQueue({ requests, rows }: { requests: RestockRequestRow[]
   );
 }
 
+function StockRowCard({
+  row,
+  index,
+  effectiveRole,
+  nested = false,
+  onAdjust,
+  onPing,
+}: {
+  row: InventoryRow;
+  index: number;
+  effectiveRole: "admin" | "staff";
+  nested?: boolean;
+  onAdjust: (target: StockAdjustmentTarget) => void;
+  onPing: (row: InventoryRow) => void;
+}) {
+  const ratio = stockRatio(row.quantity, row.low_stock_qty);
+  const percentage = Math.round(ratio * 100);
+  const status = stockStatus(row);
+
+  return (
+    <FluidEntrySurface key={`${row.sku_id}-${row.location_id}`} entryDelay={nested ? 0 : Math.min(index * 0.04, 0.28)} className={cn("rounded-lg border border-zinc-200 bg-white transition-colors hover:border-zinc-300", nested && "shadow-sm shadow-black/5")}>
+      <div className="p-1.5 xl:hidden">
+        <div className="flex items-start gap-2">
+          <div className="relative size-9 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-white ring-1 ring-black/5 sm:size-10">
+            {row.photo_url ? (
+              <Image src={row.photo_url} alt={row.product_name} fill loading={!nested && index === 0 ? "eager" : "lazy"} sizes="64px" className="object-cover" />
+            ) : (
+              <div className="grid size-full place-items-center bg-lime text-2xl font-black text-black/80">{row.product_name.slice(0, 1)}</div>
+            )}
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <h2 className="line-clamp-1 text-sm font-black tracking-[-0.035em] sm:text-base">{row.product_name}</h2>
+                <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] font-bold text-zinc-500">
+                  {row.variant ? <span className="rounded-full bg-zinc-100 px-2 py-0.5">{row.variant}</span> : null}
+                  <span className="rounded-full bg-zinc-100 px-2 py-0.5">{row.sku_code}</span>
+                </div>
+              </div>
+              <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] ring-1", status.className)}>{status.label}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className={cn("mt-1.5 rounded-md border bg-zinc-50 p-1.5", stockCardBorder(row))}>
+          <div className="flex items-end justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Current Stock</div>
+              <div className="flex items-end gap-2">
+                <span className="text-xl font-black leading-none tracking-[-0.08em] sm:text-2xl">{row.quantity}</span>
+              </div>
+            </div>
+            <div className="text-right text-xs font-black text-zinc-500">Low at {row.low_stock_qty}</div>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white ring-1 ring-border">
+            <div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: stockColor(row.quantity, row.low_stock_qty) }} />
+          </div>
+          <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+            <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-8 rounded-md border-lime bg-white text-xs font-black hover:bg-white" onClick={() => onAdjust({ row, direction: "deduct" })}>
+              <Minus className="size-4" />
+              Deduct
+            </Button>
+            <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-8 rounded-md bg-lime text-xs font-black text-black hover:bg-lime" onClick={() => onAdjust({ row, direction: "add" })}>
+              <Plus className="size-4" />
+              Add
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-1.5 rounded-md border border-border bg-white p-1.5">
+          {effectiveRole === "admin" && isAdminRow(row) ? (
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-sm font-black tracking-[-0.035em]">{row.supplier_name ?? "No supplier"}</div>
+                <div className="mt-0.5 text-xs font-bold text-zinc-500">{row.phone_raw ?? "No phone number"}</div>
+              </div>
+              {row.whatsapp_number ? (
+                <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} label="WhatsApp" className="h-8 shrink-0 rounded-md bg-[#25D366] px-3 text-[11px] font-black text-white hover:bg-[#25D366]" />
+              ) : null}
+            </div>
+          ) : (
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-500">Need help?</div>
+                <div className="mt-1 text-base font-black tracking-[-0.045em]">Ping admin</div>
+              </div>
+              <Button type="button" variant="outline" className="h-8 rounded-md bg-white px-3 text-xs font-black hover:bg-white" onClick={() => onPing(row)}>Ping</Button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="hidden xl:grid xl:grid-cols-[88px_minmax(220px,1fr)_150px_210px] xl:items-stretch">
+        <ProductThumb label={row.product_name} photoUrl={row.photo_url} eager={!nested && index === 0} />
+
+        <div className="flex min-w-0 items-center px-2 py-1.5">
+          <div className="min-w-0 pr-2">
+            <h2 className="truncate text-base font-black tracking-[-0.045em]">{row.product_name}</h2>
+            <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] font-bold text-zinc-500">
+              {row.variant ? <span className="rounded-md bg-zinc-100 px-2 py-0.5">{row.variant}</span> : null}
+              <span className="rounded-md bg-zinc-100 px-2 py-0.5">{row.sku_code}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className={cn("col-span-2 m-1.5 mt-0 rounded-md border bg-zinc-50 p-1.5 xl:col-span-1 xl:m-1.5 xl:ml-0", stockCardBorder(row))}>
+          <div>
+            <div>
+              <div className="flex items-end gap-2">
+                <span className="text-xl font-black leading-none tracking-[-0.08em]">{row.quantity}</span>
+              </div>
+              <div className="mt-0.5 text-[11px] font-bold text-zinc-500">Low at {row.low_stock_qty}</div>
+            </div>
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white ring-1 ring-border">
+            <div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: stockColor(row.quantity, row.low_stock_qty) }} />
+          </div>
+          <div className="mt-2 grid grid-cols-2 gap-1.5">
+            <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-10 rounded-md border-lime bg-white text-sm font-black hover:bg-white xl:h-7" onClick={() => onAdjust({ row, direction: "deduct" })}>
+              <Minus className="size-4" />
+            </Button>
+            <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-10 rounded-md bg-lime text-sm font-black text-black hover:bg-lime xl:h-7" onClick={() => onAdjust({ row, direction: "add" })}>
+              <Plus className="size-4" />
+            </Button>
+          </div>
+        </div>
+
+        <div className="col-span-2 mx-1.5 mb-1.5 rounded-md border border-border bg-white p-1.5 xl:col-span-1 xl:m-1.5 xl:ml-0 xl:bg-zinc-50">
+          {effectiveRole === "admin" && isAdminRow(row) ? (
+            <>
+              <div className="truncate text-base font-black tracking-[-0.045em]">{row.supplier_name ?? "No supplier"}</div>
+              <div className="text-[11px] font-bold text-zinc-500">{row.phone_raw ?? "No phone number"}</div>
+              <div className="mt-2">
+                {row.whatsapp_number ? (
+                  <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} className="h-10 w-full rounded-md bg-[#25D366] px-3 text-xs font-black text-white hover:bg-[#25D366] xl:h-8" />
+                ) : null}
+              </div>
+            </>
+          ) : (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:flex-col xl:items-stretch">
+              <div>
+                <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-500">Need help?</div>
+                <div className="mt-2 text-xl font-black tracking-[-0.045em]">Ping admin</div>
+                <div className="mt-1 text-sm font-bold text-zinc-500">Supplier details hidden for staff.</div>
+              </div>
+              <Button type="button" variant="outline" className="h-10 rounded-md bg-white px-3 text-xs font-black hover:bg-white xl:h-8" onClick={() => onPing(row)}>Ping Admin</Button>
+            </div>
+          )}
+        </div>
+      </div>
+    </FluidEntrySurface>
+  );
+}
+
+function StockGroupCard({
+  entry,
+  index,
+  effectiveRole,
+  isExpanded,
+  onToggle,
+  onAdjust,
+  onPing,
+}: {
+  entry: StockGroupEntry;
+  index: number;
+  effectiveRole: "admin" | "staff";
+  isExpanded: boolean;
+  onToggle: () => void;
+  onAdjust: (target: StockAdjustmentTarget) => void;
+  onPing: (row: InventoryRow) => void;
+}) {
+  const percentage = Math.round(stockRatio(entry.totalQuantity, entry.totalLowStock) * 100);
+  const status = groupStatus(entry);
+  const borderClassName = entry.isOutOfStock ? "border-red-500" : entry.isLowStock ? "border-orange" : "border-border";
+  const primarySupplier = entry.rows.find(isAdminRow);
+
+  return (
+    <FluidEntrySurface entryDelay={Math.min(index * 0.04, 0.28)} className="overflow-hidden rounded-lg border border-zinc-200 bg-white transition-colors hover:border-zinc-300" contentClassName="p-0">
+      <button type="button" onClick={onToggle} className="grid w-full gap-2 p-2 text-left sm:p-2.5 xl:grid-cols-[88px_minmax(220px,1fr)_190px_210px] xl:items-stretch">
+        <div className="flex min-w-0 items-start gap-2 xl:contents">
+          <div className="relative size-10 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-white ring-1 ring-black/5 xl:size-auto xl:min-h-14">
+            {entry.photoUrl ? (
+              <Image src={entry.photoUrl} alt={entry.productName} fill loading={index === 0 ? "eager" : "lazy"} sizes="88px" className="object-cover" />
+            ) : (
+              <div className="grid size-full place-items-center bg-lime text-2xl font-black text-black/80">{entry.productName.slice(0, 1)}</div>
+            )}
+          </div>
+          <div className="min-w-0 xl:flex xl:items-center xl:px-2 xl:py-1.5">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="rounded-md bg-black px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-lime">Main SKU</span>
+                <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] ring-1", status.className)}>{status.label}</span>
+              </div>
+              <h2 className="mt-1 line-clamp-1 text-sm font-black tracking-[-0.035em] sm:text-base xl:text-base">{entry.productName}</h2>
+              <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] font-bold text-zinc-500">
+                <span className="rounded-md bg-zinc-100 px-2 py-0.5">{entry.variationName}</span>
+                <span className="rounded-md bg-zinc-100 px-2 py-0.5">{entry.rows.length} variants</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className={cn("rounded-md border bg-zinc-50 p-1.5", borderClassName)}>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Total Stock</div>
+              <div className="flex items-end gap-2">
+                <span className="text-xl font-black leading-none tracking-[-0.08em]">{entry.totalQuantity}</span>
+              </div>
+              <div className="mt-0.5 text-[11px] font-bold text-zinc-500">Low total {entry.totalLowStock}</div>
+            </div>
+            <ChevronDown className={cn("mt-1 size-5 shrink-0 transition-transform", isExpanded && "rotate-180")} />
+          </div>
+          <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white ring-1 ring-border">
+            <div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: stockColor(entry.totalQuantity, entry.totalLowStock) }} />
+          </div>
+        </div>
+
+        <div className="rounded-md border border-border bg-white p-1.5 xl:bg-zinc-50">
+          {effectiveRole === "admin" && primarySupplier ? (
+            <>
+              <div className="truncate text-base font-black tracking-[-0.045em]">{primarySupplier.supplier_name ?? "No supplier"}</div>
+              <div className="text-[11px] font-bold text-zinc-500">{primarySupplier.phone_raw ?? "No phone number"}</div>
+            </>
+          ) : (
+            <>
+              <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-500">Variants</div>
+              <div className="mt-1 text-sm font-black tracking-[-0.035em]">Tap to {isExpanded ? "hide" : "view"} child SKUs</div>
+            </>
+          )}
+        </div>
+      </button>
+
+      {isExpanded ? (
+        <div className="grid gap-2 border-t border-zinc-100 bg-zinc-50 p-2 sm:p-3">
+          {entry.rows.map((row, childIndex) => (
+            <StockRowCard key={`${entry.id}-${row.sku_id}-${row.location_id}`} row={row} index={childIndex} effectiveRole={effectiveRole} nested onAdjust={onAdjust} onPing={onPing} />
+          ))}
+        </div>
+      ) : null}
+    </FluidEntrySurface>
+  );
+}
+
 export function InventoryDashboard({
   membership,
   adminRows,
@@ -523,21 +907,13 @@ export function InventoryDashboard({
   });
   const [isStatsOpen, setIsStatsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const [adjustment, setAdjustment] = useState<{ row: InventoryRow; direction: "add" | "deduct" } | null>(null);
+  const [adjustment, setAdjustment] = useState<StockAdjustmentTarget | null>(null);
   const [ping, setPing] = useState<InventoryRow | null>(null);
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(() => new Set());
   const isAdmin = membership.role === "admin";
   const effectiveRole = isAdmin && viewAsStaff ? "staff" : membership.role;
   const rows: InventoryRow[] = effectiveRole === "admin" ? adminRows : staffRows;
-  const filteredRows = useMemo(() => {
-    return rows
-      .filter((row) => `${row.product_name} ${row.sku_code}`.toLowerCase().includes(query.toLowerCase()))
-      .filter((row) => {
-        if (stockFilter === "low") return row.is_low_stock && !row.is_out_of_stock;
-        if (stockFilter === "out") return row.is_out_of_stock;
-        return true;
-      })
-      .sort((a, b) => (sortDirection === "asc" ? a.quantity - b.quantity : b.quantity - a.quantity));
-  }, [query, rows, sortDirection, stockFilter]);
+  const stockEntries = useMemo(() => buildStockEntries(rows, query, stockFilter, sortDirection), [query, rows, sortDirection, stockFilter]);
   const total = rows.length;
   const inStock = rows.filter((row) => row.quantity > row.low_stock_qty).length;
   const lowStock = rows.filter((row) => row.is_low_stock && !row.is_out_of_stock).length;
@@ -553,6 +929,15 @@ export function InventoryDashboard({
     setViewAsStaff((current) => {
       const next = !current;
       window.localStorage.setItem(STAFF_VIEW_STORAGE_KEY, String(next));
+      return next;
+    });
+  }
+
+  function toggleGroup(groupId: string) {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(groupId)) next.delete(groupId);
+      else next.add(groupId);
       return next;
     });
   }
@@ -662,149 +1047,28 @@ export function InventoryDashboard({
           </FluidEntrySurface>
 
           <div className="mt-3 grid gap-2 sm:mt-4 sm:gap-3">
-            {filteredRows.map((row, index) => {
-              const ratio = stockRatio(row.quantity, row.low_stock_qty);
-              const percentage = Math.round(ratio * 100);
-              const status = stockStatus(row);
+            {stockEntries.map((entry, index) => {
+              if (entry.type === "group") {
+                return (
+                  <StockGroupCard
+                    key={entry.id}
+                    entry={entry}
+                    index={index}
+                    effectiveRole={effectiveRole}
+                    isExpanded={entry.autoExpanded || expandedGroups.has(entry.id)}
+                    onToggle={() => toggleGroup(entry.id)}
+                    onAdjust={setAdjustment}
+                    onPing={setPing}
+                  />
+                );
+              }
 
-              return (
-                <FluidEntrySurface key={`${row.sku_id}-${row.location_id}`} entryDelay={Math.min(index * 0.04, 0.28)} className="rounded-lg border border-zinc-200 bg-white transition-colors hover:border-zinc-300">
-                  <div className="p-1.5 xl:hidden">
-                    <div className="flex items-start gap-2">
-                       <div className="relative size-9 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-white ring-1 ring-black/5 sm:size-10">
-                        {row.photo_url ? (
-                          <Image src={row.photo_url} alt={row.product_name} fill loading={index === 0 ? "eager" : "lazy"} sizes="64px" className="object-cover" />
-                        ) : (
-                          <div className="grid size-full place-items-center bg-lime text-2xl font-black text-black/80">{row.product_name.slice(0, 1)}</div>
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                              <h2 className="line-clamp-1 text-sm font-black tracking-[-0.035em] sm:text-base">{row.product_name}</h2>
-                            <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] font-bold text-zinc-500">
-                              {row.variant ? <span className="rounded-full bg-zinc-100 px-2 py-0.5">{row.variant}</span> : null}
-                              <span className="rounded-full bg-zinc-100 px-2 py-0.5">{row.sku_code}</span>
-                            </div>
-                          </div>
-                          <span className={cn("shrink-0 rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] ring-1", status.className)}>{status.label}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className={cn("mt-1.5 rounded-md border bg-zinc-50 p-1.5", stockCardBorder(row))}>
-                      <div className="flex items-end justify-between gap-3">
-                        <div>
-                          <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Current Stock</div>
-                           <div className="flex items-end gap-2">
-                              <span className="text-xl font-black leading-none tracking-[-0.08em] sm:text-2xl">{row.quantity}</span>
-                          </div>
-                        </div>
-                        <div className="text-right text-xs font-black text-zinc-500">Low at {row.low_stock_qty}</div>
-                      </div>
-                       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white ring-1 ring-border">
-                        <div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: stockColor(row.quantity, row.low_stock_qty) }} />
-                      </div>
-                        <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-                          <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-8 rounded-md border-lime bg-white text-xs font-black hover:bg-white" onClick={() => setAdjustment({ row, direction: "deduct" })}>
-                          <Minus className="size-4" />
-                          Deduct
-                        </Button>
-                          <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-8 rounded-md bg-lime text-xs font-black text-black hover:bg-lime" onClick={() => setAdjustment({ row, direction: "add" })}>
-                          <Plus className="size-4" />
-                          Add
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="mt-1.5 rounded-md border border-border bg-white p-1.5">
-                      {effectiveRole === "admin" && isAdminRow(row) ? (
-                        <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="truncate text-sm font-black tracking-[-0.035em]">{row.supplier_name ?? "No supplier"}</div>
-                            <div className="mt-0.5 text-xs font-bold text-zinc-500">{row.phone_raw ?? "No phone number"}</div>
-                          </div>
-                          {row.whatsapp_number ? (
-                              <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} label="WhatsApp" className="h-8 shrink-0 rounded-md bg-[#25D366] px-3 text-[11px] font-black text-white hover:bg-[#25D366]" />
-                          ) : null}
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-between gap-3">
-                          <div>
-                            <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-500">Need help?</div>
-                            <div className="mt-1 text-base font-black tracking-[-0.045em]">Ping admin</div>
-                          </div>
-                           <Button type="button" variant="outline" className="h-8 rounded-md bg-white px-3 text-xs font-black hover:bg-white" onClick={() => setPing(row)}>Ping</Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="hidden xl:grid xl:grid-cols-[88px_minmax(220px,1fr)_150px_210px] xl:items-stretch">
-                    <ProductThumb label={row.product_name} photoUrl={row.photo_url} eager={index === 0} />
-
-                    <div className="flex min-w-0 items-center px-2 py-1.5">
-                      <div className="min-w-0 pr-2">
-                        <h2 className="truncate text-base font-black tracking-[-0.045em]">{row.product_name}</h2>
-                        <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] font-bold text-zinc-500">
-                          {row.variant ? <span className="rounded-md bg-zinc-100 px-2 py-0.5">{row.variant}</span> : null}
-                          <span className="rounded-md bg-zinc-100 px-2 py-0.5">{row.sku_code}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className={cn("col-span-2 m-1.5 mt-0 rounded-md border bg-zinc-50 p-1.5 xl:col-span-1 xl:m-1.5 xl:ml-0", stockCardBorder(row))}>
-                      <div>
-                        <div>
-                          <div className="flex items-end gap-2">
-                            <span className="text-xl font-black leading-none tracking-[-0.08em]">{row.quantity}</span>
-                          </div>
-                          <div className="mt-0.5 text-[11px] font-bold text-zinc-500">Low at {row.low_stock_qty}</div>
-                        </div>
-                      </div>
-                      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white ring-1 ring-border">
-                        <div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: stockColor(row.quantity, row.low_stock_qty) }} />
-                      </div>
-                      <div className="mt-2 grid grid-cols-2 gap-1.5">
-                        <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-10 rounded-md border-lime bg-white text-sm font-black hover:bg-white xl:h-7" onClick={() => setAdjustment({ row, direction: "deduct" })}>
-                          <Minus className="size-4" />
-                        </Button>
-                        <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-10 rounded-md bg-lime text-sm font-black text-black hover:bg-lime xl:h-7" onClick={() => setAdjustment({ row, direction: "add" })}>
-                          <Plus className="size-4" />
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="col-span-2 mx-1.5 mb-1.5 rounded-md border border-border bg-white p-1.5 xl:col-span-1 xl:m-1.5 xl:ml-0 xl:bg-zinc-50">
-                      {effectiveRole === "admin" && isAdminRow(row) ? (
-                        <>
-                          <div className="truncate text-base font-black tracking-[-0.045em]">{row.supplier_name ?? "No supplier"}</div>
-                          <div className="text-[11px] font-bold text-zinc-500">{row.phone_raw ?? "No phone number"}</div>
-                          <div className="mt-2">
-                            {row.whatsapp_number ? (
-                              <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} className="h-10 w-full rounded-md bg-[#25D366] px-3 text-xs font-black text-white hover:bg-[#25D366] xl:h-8" />
-                            ) : null}
-                          </div>
-                        </>
-                      ) : (
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between xl:flex-col xl:items-stretch">
-                          <div>
-                            <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-500">Need help?</div>
-                            <div className="mt-2 text-xl font-black tracking-[-0.045em]">Ping admin</div>
-                            <div className="mt-1 text-sm font-bold text-zinc-500">Supplier details hidden for staff.</div>
-                          </div>
-                          <Button type="button" variant="outline" className="h-10 rounded-md bg-white px-3 text-xs font-black hover:bg-white xl:h-8" onClick={() => setPing(row)}>Ping Admin</Button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </FluidEntrySurface>
-              );
+              return <StockRowCard key={`${entry.row.sku_id}-${entry.row.location_id}`} row={entry.row} index={index} effectiveRole={effectiveRole} onAdjust={setAdjustment} onPing={setPing} />;
             })}
           </div>
 
           <FluidEntrySurface className="mt-4 rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl sm:mt-5 sm:rounded-3xl" contentClassName="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:px-6 sm:py-4">
-            <div className="text-base font-bold text-zinc-500">Showing {filteredRows.length} of {rows.length} products</div>
+            <div className="text-base font-bold text-zinc-500">Showing {stockEntries.length} product groups from {rows.length} SKUs</div>
             <div className="hidden items-center gap-4 sm:flex">
               <Button variant="outline" size="icon" aria-label="Previous page" className="size-12 rounded-xl border-border bg-white hover:bg-white"><ChevronLeft className="size-5" /></Button>
               <Button size="icon" className="size-12 rounded-xl bg-black text-lg font-bold text-white hover:bg-black">1</Button>

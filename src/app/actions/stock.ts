@@ -10,8 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 const stockAdjustmentSchema = z.object({
   skuId: z.string().uuid(),
   locationId: z.string().uuid(),
-  direction: z.enum(["add", "deduct"]),
-  quantity: z.coerce.number().int().positive().max(100000),
+  movement: z.coerce.number().int().min(-100000).max(100000).refine((value) => value !== 0),
   reason: z.enum(STOCK_ADJUSTMENT_REASONS),
   note: z.string().max(500).optional(),
 });
@@ -37,11 +36,10 @@ export async function adjustStockAction(input: z.infer<typeof stockAdjustmentSch
     return { ok: false, error: "Inventory row is not available in the selected workspace." };
   }
 
-  const delta = parsed.data.direction === "add" ? parsed.data.quantity : -parsed.data.quantity;
   const { error } = await supabase.rpc("adjust_stock", {
     p_sku_id: parsed.data.skuId,
     p_location_id: parsed.data.locationId,
-    p_delta: delta,
+    p_delta: parsed.data.movement,
     p_reason: parsed.data.reason,
     p_note: parsed.data.note || null,
   });

@@ -3,8 +3,6 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
-import { LumaSpinner } from "@/components/ui/luma-spinner";
-
 export function GlobalLoadingIndicator() {
   const pathname = usePathname();
   const [isLoading, setIsLoading] = useState(false);
@@ -60,8 +58,8 @@ export function GlobalLoadingIndicator() {
   if (!isLoading) return null;
 
   return (
-    <div className="pointer-events-none fixed inset-x-0 top-0 z-[100] flex justify-center pt-[calc(0.75rem+env(safe-area-inset-top))]">
-      <LumaSpinner className="size-14" label="Loading" />
+    <div className="pointer-events-none fixed inset-x-0 top-0 z-[100] h-[calc(0.25rem+env(safe-area-inset-top))] bg-transparent" aria-hidden="true">
+      <div className="h-full origin-left animate-pulse bg-lime shadow-[0_0_24px_rgba(190,255,0,0.7)]" />
     </div>
   );
 }
