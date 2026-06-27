@@ -1,7 +1,7 @@
 import { AppSidebar } from "@/components/app-sidebar";
 import { Skeleton } from "@/components/ui/skeleton";
 
-type SkeletonPage = "stock" | "partner" | "restock" | "skus" | "reports";
+type SkeletonPage = "stock" | "partner" | "restock" | "skus" | "reports" | "tutorial";
 
 const pageCopy: Record<SkeletonPage, { title: string; description: string }> = {
   stock: {
@@ -23,6 +23,10 @@ const pageCopy: Record<SkeletonPage, { title: string; description: string }> = {
   reports: {
     title: "Reports",
     description: "Loading operational stock, restock, and audit history.",
+  },
+  tutorial: {
+    title: "Tutorial",
+    description: "Loading guided lessons and the embedded demo app.",
   },
 };
 

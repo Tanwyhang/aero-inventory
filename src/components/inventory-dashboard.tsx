@@ -661,7 +661,7 @@ function StockRowCard({
   const status = stockStatus(row);
 
   return (
-    <FluidEntrySurface key={`${row.sku_id}-${row.location_id}`} entryDelay={nested ? 0 : Math.min(index * 0.04, 0.28)} className={cn("rounded-lg border border-zinc-200 bg-white transition-colors hover:border-zinc-300", nested && "shadow-sm shadow-black/5")}>
+    <FluidEntrySurface key={`${row.sku_id}-${row.location_id}`} data-tutorial={nested ? "stock-child-row" : "stock-row"} entryDelay={nested ? 0 : Math.min(index * 0.04, 0.28)} className={cn("rounded-lg border border-zinc-200 bg-white transition-colors hover:border-zinc-300", nested && "shadow-sm shadow-black/5")}>
       <div className="p-1.5 xl:hidden">
         <div className="flex items-start gap-2">
           <div className="relative size-9 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-white ring-1 ring-black/5 sm:size-10">
@@ -814,7 +814,7 @@ function StockGroupCard({
   const primarySupplier = entry.rows.find(isAdminRow);
 
   return (
-    <FluidEntrySurface entryDelay={Math.min(index * 0.04, 0.28)} className="overflow-hidden rounded-xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300" contentClassName="p-0">
+    <FluidEntrySurface data-tutorial="stock-group" entryDelay={Math.min(index * 0.04, 0.28)} className="overflow-hidden rounded-xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300" contentClassName="p-0">
       <div className="grid lg:grid-cols-[minmax(280px,360px)_1fr]">
         <div className="border-b border-zinc-200 bg-zinc-50/70 p-3 lg:border-b-0 lg:border-r lg:p-4">
           <div className="flex min-w-0 gap-3 lg:items-start">
@@ -979,7 +979,7 @@ export function InventoryDashboard({
           <header className="flex items-start justify-between gap-4">
             <div>
               <StoreIdentityEditor initialName={membership.organization_name} initialIcon={membership.organization_icon} workspaceId={membership.organization_id} readOnly={effectiveRole !== "admin"} />
-              <div className="mt-3 hidden items-center gap-2 rounded-full bg-zinc-100 px-4 py-2 text-sm font-bold text-zinc-600 sm:inline-flex">
+              <div data-tutorial="role-badge" className="mt-3 hidden items-center gap-2 rounded-full bg-zinc-100 px-4 py-2 text-sm font-bold text-zinc-600 sm:inline-flex">
                 <ShieldCheck className="size-4" />
                 {effectiveRole === "admin" ? "Admin view" : "Staff-safe view"}
               </div>
@@ -1018,11 +1018,11 @@ export function InventoryDashboard({
             <div className="grid gap-3 xl:grid-cols-[1fr_auto_auto] xl:items-center">
               <label className="flex h-12 items-center gap-3 rounded-xl border border-border bg-zinc-50 px-3 sm:h-14 sm:gap-4 sm:px-4">
                 <Search className="size-5 shrink-0" />
-                <input value={query} onChange={(event) => setQuery(event.target.value)} className="h-full min-w-0 flex-1 bg-transparent text-base font-semibold text-black outline-none placeholder:text-zinc-500" placeholder="Search product or SKU" />
+                <input data-tutorial="stock-search" value={query} onChange={(event) => setQuery(event.target.value)} className="h-full min-w-0 flex-1 bg-transparent text-base font-semibold text-black outline-none placeholder:text-zinc-500" placeholder="Search product or SKU" />
               </label>
               <div className="grid grid-cols-3 rounded-xl border border-border bg-zinc-50 p-1">
                 {(["all", "low", "out"] as const).map((filter) => (
-                  <button key={filter} type="button" onClick={() => setStockFilter(filter)} className={cn("relative h-11 overflow-hidden rounded-lg px-3 text-sm font-black capitalize transition", stockFilter === filter ? "text-white" : "text-zinc-500 hover:text-black")}>
+                  <button key={filter} type="button" data-tutorial={`stock-filter-${filter}`} onClick={() => setStockFilter(filter)} className={cn("relative h-11 overflow-hidden rounded-lg px-3 text-sm font-black capitalize transition", stockFilter === filter ? "text-white" : "text-zinc-500 hover:text-black")}>
                     {stockFilter === filter ? (
                       <motion.span
                         layoutId="stock-filter-active-pill"

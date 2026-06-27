@@ -338,7 +338,7 @@ export function PartnerShareManager({
             </div>
             {canManage ? (
               <div className="flex items-center gap-2">
-                <Button type="button" onClick={() => setModal("sheet")} disabled={pageData.partners.length === 0 || inventoryRows.length === 0} className="h-9 rounded-lg bg-lime px-3 text-xs font-bold text-black hover:bg-lime sm:px-4"><Plus className="size-4" />New Sheet</Button>
+                <Button type="button" data-tutorial="partner-new-sheet" onClick={() => setModal("sheet")} disabled={pageData.partners.length === 0 || inventoryRows.length === 0} className="h-9 rounded-lg bg-lime px-3 text-xs font-bold text-black hover:bg-lime sm:px-4"><Plus className="size-4" />New Sheet</Button>
                 <Button type="button" variant="outline" onClick={() => openPartner()} className="hidden h-9 rounded-lg bg-white px-3 text-xs font-bold hover:bg-white sm:inline-flex sm:px-4"><Plus className="size-4" />New Partner</Button>
                 <Button type="button" variant="outline" onClick={() => openPartner()} className="h-9 rounded-lg bg-white px-2 text-xs font-bold hover:bg-white sm:hidden" aria-label="New partner"><MoreHorizontal className="size-4" /></Button>
               </div>
@@ -373,7 +373,7 @@ export function PartnerShareManager({
                 <span className="text-xs font-black tabular-nums text-zinc-400">{pageData.sheets.length}</span>
               </div>
               <div className="mt-3 grid gap-2">
-                <input value={sheetQuery} onChange={(event) => setSheetQuery(event.target.value)} className="h-9 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-xs font-semibold outline-none focus:border-zinc-300 focus:bg-white focus:ring-2 focus:ring-lime" placeholder="Search sheets" />
+                <input data-tutorial="partner-search" value={sheetQuery} onChange={(event) => setSheetQuery(event.target.value)} className="h-9 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-xs font-semibold outline-none focus:border-zinc-300 focus:bg-white focus:ring-2 focus:ring-lime" placeholder="Search sheets" />
                 <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as PartnerShareStatus | "all")} className="h-9 rounded-lg border border-zinc-200 bg-zinc-50 px-3 text-xs font-semibold text-zinc-700 outline-none focus:border-zinc-300 focus:bg-white focus:ring-2 focus:ring-lime">
                   <option value="all">All status</option>
                   {Object.entries(statusLabels).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
@@ -402,7 +402,7 @@ export function PartnerShareManager({
 
             <div className="grid gap-5">
               {selectedDetail ? (
-                <FluidEntrySurface className="rounded-2xl border border-white/50 bg-white/70 backdrop-blur-2xl sm:rounded-3xl" contentClassName="p-3 sm:p-5">
+                <FluidEntrySurface data-tutorial="partner-sheet" className="rounded-2xl border border-white/50 bg-white/70 backdrop-blur-2xl sm:rounded-3xl" contentClassName="p-3 sm:p-5">
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
@@ -414,7 +414,7 @@ export function PartnerShareManager({
                       <p className="mt-0.5 text-[11px] font-bold text-zinc-400 sm:text-xs">{formatDate(selectedDetail.sheet.share_date)} · Prepared by {selectedDetail.sheet.prepared_by_name ?? "-"}</p>
                     </div>
                     <div className="hidden grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:justify-end xl:flex">
-                      {canManage && selectedDetail.sheet.status !== "completed" ? <Button type="button" onClick={() => setModal("item")} className="h-8 rounded-lg bg-black px-2.5 text-[11px] font-bold text-white hover:bg-black"><PackagePlus className="size-3.5" />Add Product</Button> : null}
+                      {canManage && selectedDetail.sheet.status !== "completed" ? <Button type="button" data-tutorial="partner-add-product" onClick={() => setModal("item")} className="h-8 rounded-lg bg-black px-2.5 text-[11px] font-bold text-white hover:bg-black"><PackagePlus className="size-3.5" />Add Product</Button> : null}
                       <Button type="button" variant="outline" onClick={copyWhatsApp} className="h-8 rounded-lg bg-white px-2.5 text-[11px] font-bold hover:bg-white"><Clipboard className="size-3.5" />WhatsApp</Button>
                       <Button type="button" variant="outline" onClick={downloadExcel} className="h-8 rounded-lg bg-white px-2.5 text-[11px] font-bold hover:bg-white"><Download className="size-3.5" />Excel</Button>
                       {canManage && selectedDetail.sheet.status === "draft" ? <Button type="button" onClick={() => changeStatus("confirmed")} className="h-8 rounded-lg bg-blue-600 px-2.5 text-[11px] text-white hover:bg-blue-600"><Check className="size-3.5" />Confirm</Button> : null}
@@ -511,7 +511,7 @@ export function PartnerShareManager({
                             <td className="truncate px-2 py-2 font-bold text-zinc-600" title={item.category_name ?? "No category"}>{item.category_name ?? "-"}</td>
                             <td className="px-2 py-1.5 font-black tabular-nums">{item.current_stock_snapshot}</td>
                             <td className="px-2 py-1.5">
-                              {isLocked ? <span className="font-black tabular-nums">{item.share_qty}</span> : <input aria-label={`Share qty for ${productLabel(item)}`} type="number" min={1} inputMode="numeric" value={inlineShareDraft[item.id] ?? String(item.share_qty)} onChange={(event) => setInlineShareDraft((draft) => ({ ...draft, [item.id]: event.target.value }))} onBlur={() => submitInlineShareQty(item)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} className="h-7 w-16 rounded-md border border-border bg-white px-1 text-center font-black tabular-nums outline-none focus:ring-2 focus:ring-lime" />}
+                              {isLocked ? <span className="font-black tabular-nums">{item.share_qty}</span> : <input data-tutorial="partner-share-qty" aria-label={`Share qty for ${productLabel(item)}`} type="number" min={1} inputMode="numeric" value={inlineShareDraft[item.id] ?? String(item.share_qty)} onChange={(event) => setInlineShareDraft((draft) => ({ ...draft, [item.id]: event.target.value }))} onBlur={() => submitInlineShareQty(item)} onKeyDown={(event) => { if (event.key === "Enter") event.currentTarget.blur(); }} className="h-7 w-16 rounded-md border border-border bg-white px-1 text-center font-black tabular-nums outline-none focus:ring-2 focus:ring-lime" />}
                             </td>
                             <td className="truncate px-2 py-2 font-semibold text-zinc-600" title={item.remark ?? "-"}>{item.remark ?? "-"}</td>
                             <td className="px-2 py-2">

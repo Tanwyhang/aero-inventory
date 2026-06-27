@@ -3,7 +3,7 @@
 import Image from "next/image";
 import { startTransition, useCallback, useEffect, useMemo, useOptimistic } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, BarChart3, Box, Eye, Handshake, Package, RotateCcw } from "lucide-react";
+import { ArrowLeft, BarChart3, BookOpen, Box, Eye, Handshake, Package, RotateCcw } from "lucide-react";
 import { motion } from "motion/react";
 
 import aeroLogo from "../../design/logoword.png";
@@ -15,6 +15,7 @@ const navItems = [
   { label: "Restock", href: "/restock", icon: RotateCcw, key: "restock" },
   { label: "SKUs", href: "/sku", icon: Package, key: "skus" },
   { label: "Reports", href: "/reports", icon: BarChart3, key: "reports" },
+  { label: "Tutorial", href: "/tutorial", icon: BookOpen, key: "tutorial" },
 ] as const;
 
 type NavKey = (typeof navItems)[number]["key"];
@@ -36,7 +37,7 @@ export function AppSidebar({
 }) {
   const router = useRouter();
   const [optimisticActive, setOptimisticActive] = useOptimistic(active, (_current, next: NavKey) => next);
-  const visibleNavItems = useMemo(() => (role === "admin" ? navItems : navItems.filter((item) => item.key === "stock" || item.key === "partner")), [role]);
+  const visibleNavItems = useMemo(() => (role === "admin" ? navItems : navItems.filter((item) => item.key === "stock" || item.key === "partner" || item.key === "tutorial")), [role]);
 
   const navigateOptimistically = useCallback((item: (typeof navItems)[number]) => {
     startTransition(() => {
@@ -90,6 +91,7 @@ export function AppSidebar({
             <button
               key={item.label}
               type="button"
+              data-tutorial={`nav-${item.key}`}
               onClick={() => navigateOptimistically(item)}
               className={cn(
                 "relative flex min-w-fit items-center gap-4 overflow-hidden rounded-xl px-4 py-3 text-left text-[15px] font-semibold transition lg:min-w-0 lg:px-5 lg:py-4",
@@ -139,6 +141,7 @@ export function AppSidebar({
           <button
             key={item.label}
             type="button"
+            data-tutorial={`nav-${item.key}`}
             onClick={() => navigateOptimistically(item)}
             className={cn(
               "relative flex min-h-14 flex-1 flex-col items-center justify-center gap-1 overflow-hidden rounded-2xl px-1 text-[10px] font-black transition",

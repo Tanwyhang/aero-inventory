@@ -798,7 +798,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                 <div className="text-xs font-bold uppercase tracking-[0.12em] sm:text-sm">Active SKUs</div>
                 <div className="text-2xl font-black tracking-[-0.06em] sm:text-4xl">{rows.length}</div>
               </FluidEntrySurface>
-              <Button type="button" onClick={openCreate} className="h-10 rounded-lg bg-black px-5 text-sm font-bold text-white hover:bg-black sm:h-12 sm:px-6 sm:text-base">
+              <Button type="button" data-tutorial="sku-add" onClick={openCreate} className="h-10 rounded-lg bg-black px-5 text-sm font-bold text-white hover:bg-black sm:h-12 sm:px-6 sm:text-base">
                 <Plus className="size-5" />
                 Add SKU
               </Button>
@@ -810,7 +810,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
           <div className="mt-6 grid gap-2 rounded-2xl border border-zinc-200 bg-white p-3 sm:grid-cols-[1fr_220px] sm:p-4">
             <label className="flex h-11 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 focus-within:ring-2 focus-within:ring-lime">
               <Search className="size-4 shrink-0 text-zinc-500" />
-              <input value={query} onChange={(event) => setQuery(event.target.value)} className="h-full min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none placeholder:text-zinc-500" placeholder="Search name, variant, category, SKU, supplier" />
+              <input data-tutorial="sku-search" value={query} onChange={(event) => setQuery(event.target.value)} className="h-full min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none placeholder:text-zinc-500" placeholder="Search name, variant, category, SKU, supplier" />
             </label>
             <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="h-11 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-lime">
               <option value="all">All categories</option>
@@ -822,7 +822,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
             {tableEntries.map((entry) => {
               if (entry.type === "group") {
                 return (
-                  <FluidEntrySurface key={entry.id} className="overflow-hidden rounded-xl border border-zinc-200 bg-white" contentClassName="p-0">
+                  <FluidEntrySurface key={entry.id} data-tutorial="sku-group" className="overflow-hidden rounded-xl border border-zinc-200 bg-white" contentClassName="p-0">
                     <div className="grid 2xl:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.7fr)]">
                       <div className="flex min-w-0 gap-3 border-b border-zinc-100 bg-zinc-50 px-3 py-3 2xl:border-r 2xl:border-b-0">
                         <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-zinc-200 bg-lime text-lg font-black">
@@ -832,7 +832,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                           <div className="line-clamp-2 text-sm font-black tracking-[-0.03em]">{entry.productName}</div>
                           <div className="mt-1 text-xs font-bold text-zinc-500">Main SKU</div>
                           <div className="mt-1 text-xs font-semibold text-zinc-400">{entry.variationName} · {entry.rows.length} types</div>
-                          <button type="button" onClick={() => openAppendVariation(entry.rows[0], entry.rows)} className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] font-black text-zinc-700 hover:border-black">
+                          <button type="button" data-tutorial="sku-add-type" onClick={() => openAppendVariation(entry.rows[0], entry.rows)} className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] font-black text-zinc-700 hover:border-black">
                             <Plus className="size-3" /> Type
                           </button>
                         </div>
