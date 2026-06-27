@@ -339,8 +339,8 @@ export function PartnerShareManager({
             {canManage ? (
               <div className="flex items-center gap-2">
                 <Button type="button" data-tutorial="partner-new-sheet" onClick={() => setModal("sheet")} disabled={pageData.partners.length === 0 || inventoryRows.length === 0} className="h-9 rounded-lg bg-lime px-3 text-xs font-bold text-black hover:bg-lime sm:px-4"><Plus className="size-4" />New Sheet</Button>
-                <Button type="button" variant="outline" onClick={() => openPartner()} className="hidden h-9 rounded-lg bg-white px-3 text-xs font-bold hover:bg-white sm:inline-flex sm:px-4"><Plus className="size-4" />New Partner</Button>
-                <Button type="button" variant="outline" onClick={() => openPartner()} className="h-9 rounded-lg bg-white px-2 text-xs font-bold hover:bg-white sm:hidden" aria-label="New partner"><MoreHorizontal className="size-4" /></Button>
+                <Button type="button" data-tutorial="partner-new-partner" variant="outline" onClick={() => openPartner()} className="hidden h-9 rounded-lg bg-white px-3 text-xs font-bold hover:bg-white sm:inline-flex sm:px-4"><Plus className="size-4" />New Partner</Button>
+                <Button type="button" data-tutorial="partner-new-partner" variant="outline" onClick={() => openPartner()} className="h-9 rounded-lg bg-white px-2 text-xs font-bold hover:bg-white sm:hidden" aria-label="New partner"><MoreHorizontal className="size-4" /></Button>
               </div>
             ) : null}
           </header>
@@ -542,7 +542,7 @@ export function PartnerShareManager({
 
       {modal ? (
         <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={closeModal}>
-          <FluidEntrySurface className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-5" wrapperClassName="w-full max-w-[22rem] sm:max-w-2xl" onClick={(event) => event.stopPropagation()}>
+          <FluidEntrySurface data-tutorial="partner-modal" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-5" wrapperClassName="w-full max-w-[22rem] sm:max-w-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-2xl font-black tracking-[-0.05em]">{modal === "partner" ? "Partner" : modal === "sheet" ? "Share Sheet" : modal === "edit-item" ? "Edit Product" : "Add Product"}</h3>
@@ -552,11 +552,11 @@ export function PartnerShareManager({
             </div>
             {modal === "partner" ? (
               <form onSubmit={submitPartner} className="mt-5 grid gap-4">
-                <Input required name="partner-name" autoComplete="off" value={partnerDraft.name} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, name: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="Partner name" />
+                <Input data-tutorial="partner-modal-name" required name="partner-name" autoComplete="off" value={partnerDraft.name} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, name: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="Partner name" />
                 <Input name="partner-contact" autoComplete="off" value={partnerDraft.contactName} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, contactName: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="Contact name" />
                 <Input name="partner-phone" type="tel" inputMode="tel" autoComplete="off" value={partnerDraft.phoneRaw} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, phoneRaw: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="WhatsApp / phone" />
                 <Textarea name="partner-notes" autoComplete="off" value={partnerDraft.notes} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, notes: event.target.value }))} className="min-h-24 rounded-xl font-bold" placeholder="Notes" />
-                <Button className="h-12 rounded-xl bg-black font-bold text-white hover:bg-black">Review Partner</Button>
+                <Button data-tutorial="partner-modal-review" className="h-12 rounded-xl bg-black font-bold text-white hover:bg-black">Review Partner</Button>
               </form>
             ) : null}
             {modal === "sheet" ? (
@@ -567,23 +567,23 @@ export function PartnerShareManager({
                 <NativeSelect required name="share-location" value={sheetDraft.locationId} onChange={(event) => setSheetDraft((draft) => ({ ...draft, locationId: event.target.value }))} className="h-12 rounded-xl bg-white font-bold">
                   {locationRows.map((row) => <NativeSelectOption key={row.location_id} value={row.location_id}>{row.location_name}</NativeSelectOption>)}
                 </NativeSelect>
-                <Input required name="share-date" type="date" value={sheetDraft.shareDate} onChange={(event) => setSheetDraft((draft) => ({ ...draft, shareDate: event.target.value }))} className="h-12 rounded-xl font-bold" />
-                <Button className="h-12 rounded-xl bg-black font-bold text-white hover:bg-black">Review Sheet</Button>
+                <Input data-tutorial="partner-modal-date" required name="share-date" type="date" value={sheetDraft.shareDate} onChange={(event) => setSheetDraft((draft) => ({ ...draft, shareDate: event.target.value }))} className="h-12 rounded-xl font-bold" />
+                <Button data-tutorial="partner-modal-review" className="h-12 rounded-xl bg-black font-bold text-white hover:bg-black">Review Sheet</Button>
               </form>
             ) : null}
             {modal === "item" || modal === "edit-item" ? (
               <form onSubmit={submitItem} className="mt-5 grid gap-4">
                 {modal === "item" ? (
                   <>
-                    <Input name="product-search" autoComplete="off" value={productQuery} onChange={(event) => setProductQuery(event.target.value)} className="h-12 rounded-xl font-bold" placeholder="Search product, SKU, category" />
+                    <Input data-tutorial="partner-modal-product-search" name="product-search" autoComplete="off" value={productQuery} onChange={(event) => setProductQuery(event.target.value)} className="h-12 rounded-xl font-bold" placeholder="Search product, SKU, category" />
                     <NativeSelect required name="share-sku" value={itemDraft.skuId} onChange={(event) => setItemDraft((draft) => ({ ...draft, skuId: event.target.value }))} className="h-12 rounded-xl bg-white font-bold">
                       {filteredProductRows.map((row) => <NativeSelectOption key={row.sku_id} value={row.sku_id}>{productLabel(row)} · {row.sku_code} · {row.quantity} stock</NativeSelectOption>)}
                     </NativeSelect>
                   </>
                 ) : null}
-                <Input required name="share-qty" inputMode="numeric" min={1} type="number" value={itemDraft.shareQty} onChange={(event) => setItemDraft((draft) => ({ ...draft, shareQty: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="Share qty" />
+                <Input data-tutorial="partner-modal-share-qty" required name="share-qty" inputMode="numeric" min={1} type="number" value={itemDraft.shareQty} onChange={(event) => setItemDraft((draft) => ({ ...draft, shareQty: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="Share qty" />
                 <Textarea name="share-remark" autoComplete="off" value={itemDraft.remark} onChange={(event) => setItemDraft((draft) => ({ ...draft, remark: event.target.value }))} className="min-h-24 rounded-xl font-bold" placeholder="Remark" />
-                <Button className="h-12 rounded-xl bg-black font-bold text-white hover:bg-black">Review Product</Button>
+                <Button data-tutorial="partner-modal-review" className="h-12 rounded-xl bg-black font-bold text-white hover:bg-black">Review Product</Button>
               </form>
             ) : null}
           </FluidEntrySurface>

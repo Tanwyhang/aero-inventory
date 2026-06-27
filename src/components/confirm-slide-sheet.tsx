@@ -29,7 +29,7 @@ export function ConfirmSlideSheet({
   return (
     <Dialog open onOpenChange={(open) => !open && onCancel()}>
       <DialogContent showCloseButton={false} className="z-[70] w-full max-w-[22rem] border-0 bg-transparent p-0 shadow-none sm:max-w-lg">
-        <FluidEntrySurface className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/95 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
+        <FluidEntrySurface data-tutorial="confirmation-sheet" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/95 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-400">Confirm Record</div>
@@ -52,7 +52,7 @@ export function ConfirmSlideSheet({
 
           {error ? <div className="mt-4 rounded-xl border border-border bg-white px-4 py-3 text-sm font-black text-black">{error}</div> : null}
 
-          <div className="mt-4 flex justify-center sm:mt-6">
+          <div data-tutorial="confirmation-action" className="mt-4 flex justify-center sm:mt-6">
             <SlideButton onComplete={onConfirm} />
           </div>
         </FluidEntrySurface>

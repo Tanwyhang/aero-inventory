@@ -976,7 +976,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
       {isOpen ? (
         <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={() => setIsOpen(false)}>
           <div className="w-full max-w-[23rem] sm:max-w-6xl" onClick={(event) => event.stopPropagation()}>
-            <FluidEntrySurface className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
+            <FluidEntrySurface data-tutorial="sku-modal" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
               <form onSubmit={isEditing || createMode === "single" ? handleSubmit : handleVariationSubmit}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -991,7 +991,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
               {!isEditing ? (
                 <div className="mt-5 inline-flex rounded-xl border border-border bg-zinc-50 p-1">
                   {(["single", "variation"] as const).map((mode) => (
-                    <button key={mode} type="button" onClick={() => setCreateMode(mode)} className={`h-10 rounded-lg px-4 text-sm font-black capitalize transition ${createMode === mode ? "bg-black text-white" : "text-zinc-500 hover:text-black"}`}>
+                    <button key={mode} type="button" data-tutorial={`sku-mode-${mode}`} onClick={() => setCreateMode(mode)} className={`h-10 rounded-lg px-4 text-sm font-black capitalize transition ${createMode === mode ? "bg-black text-white" : "text-zinc-500 hover:text-black"}`}>
                       {mode === "single" ? "Single SKU" : "SKU With Types"}
                     </button>
                   ))}
@@ -1004,7 +1004,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                     <div className="lg:row-span-3">
                       <PhotoPicker photoUrl={selectedPhotoUrl ?? draft.photoUrl} photoFile={photoFile} onPhotoChange={setPhotoFile} />
                     </div>
-                    <Field label="Name"><input required className={inputClassName} value={draft.productName} onChange={(event) => updateDraft("productName", event.target.value)} placeholder="Dog Food - Chicken" /></Field>
+                    <Field label="Name"><input data-tutorial="sku-modal-name" required className={inputClassName} value={draft.productName} onChange={(event) => updateDraft("productName", event.target.value)} placeholder="Dog Food - Chicken" /></Field>
                     <Field label="Variant"><input className={inputClassName} value={draft.variant} onChange={(event) => updateDraft("variant", event.target.value)} placeholder="2kg, Medium, 10L" /></Field>
                     <Field label="Category"><CategoryDropdown value={draft.categoryName} categories={categories} onChange={(value) => updateDraft("categoryName", value)} onAdd={startCategoryAdd} onEdit={startCategoryEdit} {...categoryDropdownEditorProps} /></Field>
                     <div className="lg:col-span-2">
@@ -1060,7 +1060,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                 <div className="mt-6 grid gap-5">
                   <div className="grid gap-5 2xl:grid-cols-2">
                     <FormSection title={variationDraft.variationGroupId ? "Main SKU" : "Main SKU With Types"}>
-                      <Field label="Product Name"><input required readOnly={Boolean(variationDraft.variationGroupId)} className={inputClassName} value={variationDraft.productName} onChange={(event) => updateVariationDraft("productName", event.target.value)} placeholder="Cat Food Pouch x28" /></Field>
+                      <Field label="Product Name"><input data-tutorial="sku-variation-product" required readOnly={Boolean(variationDraft.variationGroupId)} className={inputClassName} value={variationDraft.productName} onChange={(event) => updateVariationDraft("productName", event.target.value)} placeholder="Cat Food Pouch x28" /></Field>
                       <Field label="Type Group"><input required readOnly={Boolean(variationDraft.variationGroupId)} className={inputClassName} value={variationDraft.variationName} onChange={(event) => updateVariationDraft("variationName", event.target.value)} placeholder="Flavor, Size, Color, Weight" /></Field>
                       <Field label="Category"><CategoryDropdown value={variationDraft.categoryName} categories={categories} onChange={(value) => updateVariationDraft("categoryName", value)} onAdd={startCategoryAdd} onEdit={startCategoryEdit} {...categoryDropdownEditorProps} /></Field>
                       <label className="flex items-center justify-between gap-4 rounded-xl border-2 border-zinc-300 bg-white px-4 py-3 text-sm font-black tracking-[-0.02em] text-zinc-700 lg:col-span-2">
@@ -1096,7 +1096,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                             </Button>
                           </div>
                           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-                            <Field label="Type Name"><input required className={inputClassName} value={item.name} onChange={(event) => updateVariationItem(item.clientId, "name", event.target.value)} placeholder="Junior Tuna x28" /></Field>
+                            <Field label="Type Name"><input data-tutorial="sku-type-name" required className={inputClassName} value={item.name} onChange={(event) => updateVariationItem(item.clientId, "name", event.target.value)} placeholder="Junior Tuna x28" /></Field>
                             <Field label="SKU ID"><input required className={inputClassName} value={item.skuCode} onChange={(event) => updateVariationItem(item.clientId, "skuCode", event.target.value.toUpperCase())} placeholder="FOOD-TUNA-X28" /></Field>
                             <Field label="Price"><input required min={0} step="0.01" type="number" className={inputClassName} value={item.price} onChange={(event) => updateVariationItem(item.clientId, "price", event.target.value)} /></Field>
                             <Field label="Starting Stock"><input required min={0} type="number" className={inputClassName} value={item.openingStock} onChange={(event) => updateVariationItem(item.clientId, "openingStock", event.target.value)} /></Field>
@@ -1121,7 +1121,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
 
               <div className="mt-7 flex flex-col-reverse items-start gap-3 sm:flex-row sm:items-center sm:justify-end">
                 <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
-                <Button disabled={isPending}>
+                <Button data-tutorial="sku-modal-review" disabled={isPending}>
                   {isPending ? <LumaSpinner label="Saving SKU" /> : isEditing ? <Save className="size-5" /> : <Plus className="size-5" />}
                   {isPending ? "Saving..." : isEditing ? "Review SKU" : createMode === "variation" ? "Review SKU Types" : "Review SKU"}
                 </Button>

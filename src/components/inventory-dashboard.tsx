@@ -317,7 +317,7 @@ function AdjustmentDialog({
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={onClose}>
       <div className="w-full max-w-[22rem] sm:max-w-lg" onClick={(event) => event.stopPropagation()}>
-        <FluidEntrySurface className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
+        <FluidEntrySurface data-tutorial="stock-modal" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
           <form onSubmit={handleSubmit}>
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -378,7 +378,7 @@ function AdjustmentDialog({
              ) : null}
              <label className="grid gap-2 text-sm font-bold text-zinc-600">
                {mode === "absolute" ? "Target Stock" : "Movement Quantity"}
-                <Input required min={mode === "absolute" ? 0 : undefined} name="stock-movement" inputMode="numeric" type="number" value={movementDraft} onChange={(event) => setMovementDraft(event.target.value)} className="h-12 rounded-lg text-lg font-bold" />
+                 <Input data-tutorial="stock-modal-quantity" required min={mode === "absolute" ? 0 : undefined} name="stock-movement" inputMode="numeric" type="number" value={movementDraft} onChange={(event) => setMovementDraft(event.target.value)} className="h-12 rounded-lg text-lg font-bold" />
              </label>
             <label className="grid gap-2 text-sm font-bold text-zinc-600">
               Reason
@@ -401,7 +401,7 @@ function AdjustmentDialog({
 
            <div className="mt-5 flex flex-col-reverse gap-2 sm:mt-6 sm:flex-row sm:justify-end sm:gap-3">
              <Button type="button" variant="outline" onClick={onClose} className="h-11 rounded-lg bg-white px-5 text-sm font-bold hover:bg-white sm:h-12 sm:px-6 sm:text-base">Cancel</Button>
-              <Button type="submit" disabled={isPending} className="h-11 rounded-lg bg-lime px-5 text-sm font-bold text-black hover:bg-lime disabled:opacity-60 sm:h-12 sm:px-6 sm:text-base">
+               <Button type="submit" data-tutorial="stock-modal-confirm" disabled={isPending} className="h-11 rounded-lg bg-lime px-5 text-sm font-bold text-black hover:bg-lime disabled:opacity-60 sm:h-12 sm:px-6 sm:text-base">
                 {isPending ? <LumaSpinner label="Saving movement" /> : null}
                 {isPending ? "Saving..." : "Confirm Adjustment"}
               </Button>
@@ -459,7 +459,7 @@ function PingDialog({ row, onClose }: { row: InventoryRow; onClose: () => void }
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={onClose}>
       <div className="w-full max-w-[22rem] sm:max-w-lg" onClick={(event) => event.stopPropagation()}>
-        <FluidEntrySurface className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
+        <FluidEntrySurface data-tutorial="ping-modal" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
           <form onSubmit={handleSubmit}>
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -473,7 +473,7 @@ function PingDialog({ row, onClose }: { row: InventoryRow; onClose: () => void }
           <div className="mt-4 grid gap-3 sm:mt-6 sm:gap-4">
             <label className="grid gap-2 text-sm font-bold text-zinc-600">
               Requested Quantity
-              <Input name="requested-quantity" inputMode="numeric" min={1} type="number" value={requestedQty} onChange={(event) => setRequestedQty(event.target.value)} className="h-12 rounded-lg text-lg font-bold" placeholder="Optional" />
+              <Input data-tutorial="ping-modal-qty" name="requested-quantity" inputMode="numeric" min={1} type="number" value={requestedQty} onChange={(event) => setRequestedQty(event.target.value)} className="h-12 rounded-lg text-lg font-bold" placeholder="Optional" />
             </label>
             <label className="grid gap-2 text-sm font-bold text-zinc-600">
               Note
@@ -483,7 +483,7 @@ function PingDialog({ row, onClose }: { row: InventoryRow; onClose: () => void }
           </div>
           <div className="mt-5 flex flex-col-reverse gap-2 sm:mt-6 sm:flex-row sm:justify-end sm:gap-3">
             <Button type="button" variant="outline" onClick={onClose} className="h-11 rounded-lg bg-white px-5 text-sm font-bold hover:bg-white sm:h-12 sm:px-6 sm:text-base">Cancel</Button>
-            <Button disabled={isPending} className="h-11 rounded-lg bg-lime px-5 text-sm font-bold text-black hover:bg-lime disabled:opacity-60 sm:h-12 sm:px-6 sm:text-base">
+            <Button data-tutorial="ping-modal-review" disabled={isPending} className="h-11 rounded-lg bg-lime px-5 text-sm font-bold text-black hover:bg-lime disabled:opacity-60 sm:h-12 sm:px-6 sm:text-base">
               Review Ping
             </Button>
           </div>
@@ -559,7 +559,7 @@ export function RestockQueue({ requests, rows }: { requests: RestockRequestRow[]
           const action = nextAction(request.status);
 
           return (
-            <div key={request.id} className="liquid-width-enter grid gap-2.5 rounded-2xl border border-white/60 bg-white/70 p-2.5 shadow-sm shadow-black/5 backdrop-blur-lg md:grid-cols-[minmax(260px,1fr)_minmax(190px,230px)_300px] md:items-center md:gap-4 md:p-4 md:shadow-none">
+            <div key={request.id} data-tutorial="restock-request" className="liquid-width-enter grid gap-2.5 rounded-2xl border border-white/60 bg-white/70 p-2.5 shadow-sm shadow-black/5 backdrop-blur-lg md:grid-cols-[minmax(260px,1fr)_minmax(190px,230px)_300px] md:items-center md:gap-4 md:p-4 md:shadow-none">
               <div className="min-w-0">
                 <div className="min-w-0 md:min-w-[220px]">
                   <div className="line-clamp-2 text-sm font-black leading-tight tracking-[-0.04em] md:truncate md:text-base">{request.product_name}</div>
@@ -602,7 +602,7 @@ export function RestockQueue({ requests, rows }: { requests: RestockRequestRow[]
                   <Button type="button" disabled className="h-10 rounded-xl bg-zinc-200 px-3 text-[11px] font-black text-zinc-500 md:h-11 md:rounded-lg md:text-xs">No Contact</Button>
                 )}
                 {action ? (
-                  <Button type="button" aria-label={action.label} title={action.label} disabled={pendingId === request.id} onClick={() => { setConfirmError(null); setConfirmation({ request, status: action.status, label: action.label }); }} className="h-10 rounded-xl bg-lime px-0 text-black hover:bg-lime disabled:opacity-60 md:h-11 md:rounded-lg">
+                  <Button type="button" data-tutorial="restock-status-action" aria-label={action.label} title={action.label} disabled={pendingId === request.id} onClick={() => { setConfirmError(null); setConfirmation({ request, status: action.status, label: action.label }); }} className="h-10 rounded-xl bg-lime px-0 text-black hover:bg-lime disabled:opacity-60 md:h-11 md:rounded-lg">
                     <Check className="size-4 md:size-5" />
                   </Button>
                 ) : (

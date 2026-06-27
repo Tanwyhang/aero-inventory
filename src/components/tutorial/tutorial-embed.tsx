@@ -29,6 +29,7 @@ import {
 function stopRealInteraction(event: React.SyntheticEvent<HTMLElement>) {
   const target = event.target as HTMLElement | null;
   if (target?.closest("[data-tutorial-control]")) return;
+  if (window.__aeroTutorialAutomationClick) return;
 
   event.preventDefault();
   event.stopPropagation();

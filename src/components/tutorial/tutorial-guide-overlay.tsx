@@ -10,12 +10,34 @@ import type { TutorialLesson, TutorialStep } from "@/components/tutorial/tutoria
 type Rect = { top: number; left: number; width: number; height: number };
 type Point = { x: number; y: number };
 
+declare global {
+  interface Window {
+    __aeroTutorialAutomationClick?: boolean;
+  }
+}
+
 function sleep(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
 
 function targetCenter(rect: Rect): Point {
   return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+}
+
+function animationFrame() {
+  return new Promise((resolve) => window.requestAnimationFrame(resolve));
+}
+
+function isVisibleElement(element: HTMLElement) {
+  const rect = element.getBoundingClientRect();
+  const styles = window.getComputedStyle(element);
+
+  return rect.width > 0 && rect.height > 0 && styles.display !== "none" && styles.visibility !== "hidden" && Number(styles.opacity) !== 0;
+}
+
+function isInViewport(element: HTMLElement) {
+  const rect = element.getBoundingClientRect();
+  return rect.bottom > 0 && rect.right > 0 && rect.top < window.innerHeight && rect.left < window.innerWidth;
 }
 
 function setNativeValue(element: HTMLInputElement | HTMLTextAreaElement, value: string) {
@@ -54,6 +76,15 @@ export function TutorialGuideOverlay({ lesson }: { lesson: TutorialLesson }) {
   const cardPosition = useMemo(() => {
     if (typeof window === "undefined") return { left: 24, top: 24 };
     if (!targetRect) return { left: 24, top: 24 };
+    if (window.innerWidth <= 520) {
+      const cardHeight = 220;
+      const targetIsTopHalf = targetRect.top + targetRect.height / 2 < window.innerHeight / 2;
+      return {
+        left: 12,
+        top: targetIsTopHalf ? Math.max(12, window.innerHeight - cardHeight - 18) : 12,
+      };
+    }
+
     const hasRoomBelow = targetRect.top + targetRect.height + 180 < window.innerHeight;
     const top = hasRoomBelow ? targetRect.top + targetRect.height + 18 : Math.max(18, targetRect.top - 178);
     const left = Math.min(Math.max(18, targetRect.left), Math.max(18, window.innerWidth - 378));
@@ -61,14 +92,18 @@ export function TutorialGuideOverlay({ lesson }: { lesson: TutorialLesson }) {
   }, [targetRect]);
 
   const findTarget = useCallback((currentStep: TutorialStep) => {
-    return document.querySelector<HTMLElement>(currentStep.target);
+    const candidates = Array.from(document.querySelectorAll<HTMLElement>(currentStep.target)).filter(isVisibleElement);
+    return candidates.find(isInViewport) ?? candidates[0] ?? null;
   }, []);
 
-  const measureTarget = useCallback((currentStep: TutorialStep) => {
+  const measureTarget = useCallback(async (currentStep: TutorialStep) => {
     const target = findTarget(currentStep);
     if (!target) return null;
 
-    target.scrollIntoView({ behavior: "smooth", block: "center", inline: "center" });
+    target.scrollIntoView({ behavior: "auto", block: "center", inline: "nearest" });
+    await animationFrame();
+    await animationFrame();
+
     const rect = target.getBoundingClientRect();
 
     return {
@@ -77,6 +112,17 @@ export function TutorialGuideOverlay({ lesson }: { lesson: TutorialLesson }) {
       width: rect.width,
       height: rect.height,
     };
+  }, [findTarget]);
+
+  const clickTarget = useCallback(async (currentStep: TutorialStep) => {
+    const target = findTarget(currentStep);
+    if (!target) return;
+
+    window.__aeroTutorialAutomationClick = true;
+    target.click();
+    await animationFrame();
+    await animationFrame();
+    window.__aeroTutorialAutomationClick = false;
   }, [findTarget]);
 
   const typeIntoTarget = useCallback(async (currentStep: TutorialStep) => {
@@ -111,7 +157,7 @@ export function TutorialGuideOverlay({ lesson }: { lesson: TutorialLesson }) {
       await sleep(220);
       if (id !== runId.current) return;
 
-      const measured = measureTarget(step);
+      const measured = await measureTarget(step);
       if (!measured) {
         setTargetRect(null);
         return;
@@ -125,6 +171,7 @@ export function TutorialGuideOverlay({ lesson }: { lesson: TutorialLesson }) {
       if (step.action === "click") {
         setPulseKey((current) => current + 1);
         await sleep(450);
+        await clickTarget(step);
       }
 
       if (step.action === "type") {
@@ -142,11 +189,11 @@ export function TutorialGuideOverlay({ lesson }: { lesson: TutorialLesson }) {
     function handleResize() {
       window.clearTimeout(resizeTimer);
       resizeTimer = window.setTimeout(() => {
-        const measured = measureTarget(step);
-        if (measured) {
+        measureTarget(step).then((measured) => {
+          if (!measured) return;
           setTargetRect(measured);
           setCursor(targetCenter(measured));
-        }
+        });
       }, 120);
     }
 
@@ -155,7 +202,7 @@ export function TutorialGuideOverlay({ lesson }: { lesson: TutorialLesson }) {
       window.removeEventListener("resize", handleResize);
       window.clearTimeout(resizeTimer);
     };
-  }, [isRunning, measureTarget, nextStep, step, typeIntoTarget]);
+  }, [clickTarget, isRunning, measureTarget, nextStep, step, typeIntoTarget]);
 
   if (!step) return null;
 
@@ -176,7 +223,7 @@ export function TutorialGuideOverlay({ lesson }: { lesson: TutorialLesson }) {
       </div>
       <div
         data-tutorial-control
-        className="pointer-events-auto absolute w-[min(360px,calc(100vw-36px))] rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-black/25 backdrop-blur-xl transition-all duration-500"
+        className="pointer-events-auto absolute w-[min(360px,calc(100vw-24px))] rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-black/25 backdrop-blur-xl transition-all duration-500"
         style={cardPosition}
       >
         <div className="flex items-start justify-between gap-3">

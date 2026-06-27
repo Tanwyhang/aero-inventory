@@ -143,7 +143,7 @@ function ReportRow({ thumb, primary, secondary, badge, onClick }: { thumb?: Reac
 function ListModal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur-sm" onClick={onClose} role="dialog" aria-modal="true">
-      <FluidEntrySurface className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="min-h-0" wrapperClassName="w-full max-w-[22rem] sm:max-w-2xl" onClick={(event) => event.stopPropagation()}>
+      <FluidEntrySurface data-tutorial="reports-modal" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="min-h-0" wrapperClassName="w-full max-w-[22rem] sm:max-w-2xl" onClick={(event) => event.stopPropagation()}>
         <div className="border-b border-border p-4 sm:p-5">
           <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-400">Report Records</div>
           <h3 className="mt-1 text-xl font-black tracking-[-0.05em] sm:text-2xl">{title}</h3>
@@ -160,7 +160,7 @@ function ListModal({ title, children, onClose }: { title: string; children: Reac
 function DetailModal({ detail, onClose }: { detail: Detail; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))] backdrop-blur-sm" role="dialog" aria-modal="true" onClick={onClose}>
-      <FluidEntrySurface className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="min-h-0" wrapperClassName="w-full max-w-[22rem] sm:max-w-2xl" onClick={(event) => event.stopPropagation()}>
+      <FluidEntrySurface data-tutorial="reports-detail-modal" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="min-h-0" wrapperClassName="w-full max-w-[22rem] sm:max-w-2xl" onClick={(event) => event.stopPropagation()}>
         <div className="flex items-start justify-between gap-3 border-b border-border p-4 sm:gap-4 sm:p-5">
           <div className="flex min-w-0 items-center gap-3">
             {"photoUrl" in detail ? <TinyThumb label={detail.label} photoUrl={detail.photoUrl} /> : <TinyThumb label={detail.label} />}
@@ -199,7 +199,7 @@ export function ReportsActivityLists({ movements, restocks, audits }: { movement
   return (
     <>
       <div className="mt-5 grid gap-3 sm:mt-8 sm:gap-6 xl:grid-cols-3">
-        <FluidEntrySurface entryDelay={0} className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl transition hover:border-zinc-300/80 sm:rounded-3xl" contentClassName="p-3 sm:p-5" role="button" tabIndex={0} onClick={() => setOpenList("movements")} onKeyDown={(event) => event.key === "Enter" && setOpenList("movements")}>
+        <FluidEntrySurface data-tutorial="reports-movements-card" entryDelay={0} className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl transition hover:border-zinc-300/80 sm:rounded-3xl" contentClassName="p-3 sm:p-5" role="button" tabIndex={0} onClick={() => setOpenList("movements")} onKeyDown={(event) => event.key === "Enter" && setOpenList("movements")}>
           <div className="flex items-start justify-between gap-3">
             <h2 className="text-lg font-black tracking-[-0.05em] sm:text-2xl">Stock Movements</h2>
             <span className="rounded-full bg-black px-3 py-1 text-xs font-black text-lime">{movements.length}</span>
@@ -219,7 +219,7 @@ export function ReportsActivityLists({ movements, restocks, audits }: { movement
           {movements.length > previewCount ? <div className="mt-3 text-center text-xs font-black uppercase tracking-[0.14em] text-zinc-400">Tap to view all</div> : null}
         </FluidEntrySurface>
 
-        <FluidEntrySurface entryDelay={0.08} className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl transition hover:border-zinc-300/80 sm:rounded-3xl" contentClassName="p-3 sm:p-5" role="button" tabIndex={0} onClick={() => setOpenList("restocks")} onKeyDown={(event) => event.key === "Enter" && setOpenList("restocks")}>
+        <FluidEntrySurface data-tutorial="reports-restocks-card" entryDelay={0.08} className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl transition hover:border-zinc-300/80 sm:rounded-3xl" contentClassName="p-3 sm:p-5" role="button" tabIndex={0} onClick={() => setOpenList("restocks")} onKeyDown={(event) => event.key === "Enter" && setOpenList("restocks")}>
           <div className="flex items-start justify-between gap-3">
             <h2 className="text-lg font-black tracking-[-0.05em] sm:text-2xl">Restock Requests</h2>
             <span className="rounded-full bg-black px-3 py-1 text-xs font-black text-lime">{restocks.length}</span>
@@ -239,7 +239,7 @@ export function ReportsActivityLists({ movements, restocks, audits }: { movement
           {restocks.length > previewCount ? <div className="mt-3 text-center text-xs font-black uppercase tracking-[0.14em] text-zinc-400">Tap to view all</div> : null}
         </FluidEntrySurface>
 
-        <FluidEntrySurface entryDelay={0.16} className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl transition hover:border-zinc-300/80 sm:rounded-3xl" contentClassName="p-3 sm:p-5" role="button" tabIndex={0} onClick={() => setOpenList("audits")} onKeyDown={(event) => event.key === "Enter" && setOpenList("audits")}>
+        <FluidEntrySurface data-tutorial="reports-audits-card" entryDelay={0.16} className="rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl transition hover:border-zinc-300/80 sm:rounded-3xl" contentClassName="p-3 sm:p-5" role="button" tabIndex={0} onClick={() => setOpenList("audits")} onKeyDown={(event) => event.key === "Enter" && setOpenList("audits")}>
           <div className="flex items-start justify-between gap-3">
             <h2 className="text-lg font-black tracking-[-0.05em] sm:text-2xl">Audit Events</h2>
             <span className="rounded-full bg-black px-3 py-1 text-xs font-black text-lime">{audits.length}</span>

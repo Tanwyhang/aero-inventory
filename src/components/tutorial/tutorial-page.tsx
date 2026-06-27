@@ -67,7 +67,7 @@ export function TutorialPage({ membership }: { membership: Membership }) {
                 </div>
                 <div className="shrink-0 text-xs font-bold text-zinc-400">1:1 component replica</div>
               </div>
-              <div className="overflow-auto rounded-[1.45rem] bg-white">
+              <div className={cn("rounded-[1.45rem] bg-white", frameSize === "desktop" ? "overflow-auto" : "overflow-hidden")}>
                 <iframe
                   key={`${selectedLesson.id}-${membership.role}-${frameSize}`}
                   title={`${selectedLesson.label} tutorial`}
