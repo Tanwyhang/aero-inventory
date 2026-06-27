@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+
 import { AppSidebar } from "@/components/app-sidebar";
 import { AdminSkuManager } from "@/components/admin-sku-manager";
 import { FluidEntrySurface } from "@/components/fluid-entry-surface";
@@ -136,8 +138,45 @@ function LessonReplica({ lessonId, role }: { lessonId: TutorialLessonId; role: "
 export function TutorialEmbed({ lessonId, role }: { lessonId: string; role: "admin" | "staff" }) {
   const lesson = getLesson(lessonId, role);
 
+  useEffect(() => {
+    function blockUserScroll(event: WheelEvent | TouchEvent) {
+      event.preventDefault();
+    }
+
+    function blockScrollKeys(event: KeyboardEvent) {
+      const scrollKeys = new Set(["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "PageUp", "PageDown", "Home", "End", " "]);
+      if (!scrollKeys.has(event.key)) return;
+
+      const target = event.target as HTMLElement | null;
+      if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
+
+      event.preventDefault();
+    }
+
+    window.addEventListener("wheel", blockUserScroll, { passive: false, capture: true });
+    window.addEventListener("touchmove", blockUserScroll, { passive: false, capture: true });
+    window.addEventListener("keydown", blockScrollKeys, { capture: true });
+
+    return () => {
+      window.removeEventListener("wheel", blockUserScroll, { capture: true });
+      window.removeEventListener("touchmove", blockUserScroll, { capture: true });
+      window.removeEventListener("keydown", blockScrollKeys, { capture: true });
+    };
+  }, []);
+
   return (
     <>
+      <style jsx global>{`
+        html,
+        body {
+          overscroll-behavior: none;
+          scrollbar-width: none;
+        }
+
+        body::-webkit-scrollbar {
+          display: none;
+        }
+      `}</style>
       <TutorialReplicaFrame>
         <LessonReplica lessonId={lesson.id} role={role} />
       </TutorialReplicaFrame>
