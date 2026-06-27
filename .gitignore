@@ -27,3 +27,12 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+# local agent tooling
+.agents/
+skills-lock.json
+
+# local recording artifacts
+aero-prod-*
+aero-playwright-*
+aero-export-chrome-cookies.js
