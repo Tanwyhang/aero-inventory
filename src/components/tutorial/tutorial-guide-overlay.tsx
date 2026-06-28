@@ -9,6 +9,7 @@ import type { TutorialLesson, TutorialStep } from "@/components/tutorial/tutoria
 
 type Rect = { top: number; left: number; width: number; height: number };
 type Point = { x: number; y: number };
+const TUTORIAL_SPEED = 2;
 
 declare global {
   interface Window {
@@ -16,8 +17,12 @@ declare global {
   }
 }
 
+function fastDuration(ms: number, minimum = 1) {
+  return Math.max(minimum, Math.round(ms / TUTORIAL_SPEED));
+}
+
 function sleep(ms: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms));
+  return new Promise((resolve) => window.setTimeout(resolve, fastDuration(ms)));
 }
 
 function targetCenter(rect: Rect): Point {
@@ -56,7 +61,7 @@ function TypewriterText({ text }: { text: string }) {
       index += 1;
       setVisible(text.slice(0, index));
       if (index >= text.length) window.clearInterval(timer);
-    }, 15);
+    }, fastDuration(15));
 
     return () => window.clearInterval(timer);
   }, [text]);
@@ -194,7 +199,7 @@ export function TutorialGuideOverlay({ lesson }: { lesson: TutorialLesson }) {
           setTargetRect(measured);
           setCursor(targetCenter(measured));
         });
-      }, 120);
+      }, fastDuration(120));
     }
 
     window.addEventListener("resize", handleResize);
@@ -211,19 +216,19 @@ export function TutorialGuideOverlay({ lesson }: { lesson: TutorialLesson }) {
       <div className="absolute inset-0 bg-black/10" />
       {targetRect ? (
         <div
-          className="absolute rounded-[22px] border-2 border-lime shadow-[0_0_0_9999px_rgba(0,0,0,0.24),0_0_0_8px_rgba(199,255,36,0.2)] transition-all duration-500"
+          className="absolute rounded-[22px] border-2 border-lime shadow-[0_0_0_9999px_rgba(0,0,0,0.24),0_0_0_8px_rgba(199,255,36,0.2)] transition-all duration-[250ms]"
           style={{ top: targetRect.top - 8, left: targetRect.left - 8, width: targetRect.width + 16, height: targetRect.height + 16 }}
         />
       ) : null}
       {targetRect ? (
         <div key={pulseKey} className="absolute size-10 rounded-full border-2 border-lime/80 opacity-0 animate-ping" style={{ top: cursor.y - 20, left: cursor.x - 20 }} />
       ) : null}
-      <div className="absolute transition-all duration-700 ease-out" style={{ top: cursor.y + 8, left: cursor.x + 8 }}>
+      <div className="absolute transition-all duration-[350ms] ease-out" style={{ top: cursor.y + 8, left: cursor.x + 8 }}>
         <MousePointer2 className="size-9 fill-black text-lime drop-shadow-[0_8px_18px_rgba(0,0,0,0.35)]" />
       </div>
       <div
         data-tutorial-control
-        className="pointer-events-auto absolute w-[min(360px,calc(100vw-24px))] rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-black/25 backdrop-blur-xl transition-all duration-500"
+        className="pointer-events-auto absolute w-[min(360px,calc(100vw-24px))] rounded-3xl border border-white/70 bg-white/95 p-4 shadow-2xl shadow-black/25 backdrop-blur-xl transition-all duration-[250ms]"
         style={cardPosition}
       >
         <div className="flex items-start justify-between gap-3">
