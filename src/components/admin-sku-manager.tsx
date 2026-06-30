@@ -821,39 +821,75 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
           <div className="mt-4 grid gap-3">
             {tableEntries.map((entry) => {
               if (entry.type === "group") {
+                const firstRow = entry.rows[0];
+                const totalStock = entry.rows.reduce((sum, row) => sum + row.quantity, 0);
+                const totalLowStock = entry.rows.reduce((sum, row) => sum + row.low_stock_qty, 0);
+
                 return (
-                  <FluidEntrySurface key={entry.id} data-tutorial="sku-group" className="overflow-hidden rounded-xl border border-zinc-200 bg-white" contentClassName="p-0">
-                    <div className="grid 2xl:grid-cols-[minmax(220px,0.8fr)_minmax(0,1.7fr)]">
-                      <div className="flex min-w-0 gap-3 border-b border-zinc-100 bg-zinc-50 px-3 py-3 2xl:border-r 2xl:border-b-0">
+                  <FluidEntrySurface key={entry.id} data-tutorial="sku-group" className="overflow-hidden rounded-lg border border-zinc-200 bg-white" contentClassName="p-0">
+                    <div className="xl:hidden">
+                      <div className="flex min-w-0 gap-3 border-b border-zinc-100 bg-zinc-50 px-3 py-3">
                         <div className="grid size-12 shrink-0 place-items-center overflow-hidden rounded-lg border border-zinc-200 bg-lime text-lg font-black">
-                          {entry.rows[0]?.photo_url ? <Image src={entry.rows[0].photo_url} alt={entry.productName} width={48} height={48} className="size-full object-cover" /> : entry.productName.slice(0, 1)}
+                          {firstRow?.photo_url ? <Image src={firstRow.photo_url} alt={entry.productName} width={48} height={48} className="size-full object-cover" /> : entry.productName.slice(0, 1)}
                         </div>
                         <div className="min-w-0">
                           <div className="line-clamp-2 text-sm font-black tracking-[-0.03em]">{entry.productName}</div>
                           <div className="mt-1 text-xs font-bold text-zinc-500">Main SKU</div>
                           <div className="mt-1 text-xs font-semibold text-zinc-400">{entry.variationName} · {entry.rows.length} types</div>
-                          <button type="button" data-tutorial="sku-add-type" onClick={() => openAppendVariation(entry.rows[0], entry.rows)} className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] font-black text-zinc-700 hover:border-black">
+                          <button type="button" data-tutorial="sku-add-type" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows)} className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] font-black text-zinc-700 hover:border-black">
                             <Plus className="size-3" /> Type
                           </button>
                         </div>
                       </div>
-                      <div className="min-w-0 divide-y divide-zinc-100">
-                        <div className="hidden grid-cols-[130px_minmax(140px,1fr)_90px_110px_150px] gap-2 bg-zinc-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-zinc-400 2xl:grid">
-                          <div>SKU</div>
-                          <div>Type</div>
-                          <div>Price</div>
-                          <div>Stock</div>
-                          <div className="text-right">Action</div>
+                    </div>
+
+                    <div className="hidden min-w-[860px] grid-cols-[minmax(280px,1.45fr)_minmax(160px,1fr)_90px_120px_150px] gap-2 border-b border-zinc-200 bg-zinc-50 px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400 xl:grid">
+                      <div>Product / SKU</div>
+                      <div>Type</div>
+                      <div>Price</div>
+                      <div>Stock</div>
+                      <div className="text-right">Action</div>
+                    </div>
+
+                    <div className="min-w-0 overflow-x-auto">
+                      <div className="min-w-0 divide-y divide-zinc-100 xl:min-w-[860px]">
+                        <div className="hidden bg-white xl:grid xl:grid-cols-[minmax(280px,1.45fr)_minmax(160px,1fr)_90px_120px_150px] xl:items-center xl:gap-2 xl:px-3 xl:py-2">
+                          <div className="flex min-w-0 items-center gap-2.5">
+                            <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-md border border-zinc-200 bg-lime text-base font-black">
+                              {firstRow?.photo_url ? <Image src={firstRow.photo_url} alt={entry.productName} width={40} height={40} className="size-full object-cover" /> : entry.productName.slice(0, 1)}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="break-words text-sm font-black leading-tight tracking-[-0.035em] text-black">{entry.productName}</div>
+                              <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] font-bold text-zinc-500">
+                                <span>Main SKU</span>
+                                <span>·</span>
+                                <span>{entry.variationName}</span>
+                                <span>·</span>
+                                <span>{entry.rows.length} types</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="min-w-0 text-xs font-bold leading-tight text-zinc-500">
+                            <div className="break-words">{firstRow?.category_name ?? "Grouped types"}</div>
+                            <div className="mt-0.5 text-[10px] text-zinc-400">{firstRow?.supplier_name ?? "Main SKU"}</div>
+                          </div>
+                          <div className="text-sm font-black tabular-nums text-zinc-900">{formatPrice(firstRow?.price ?? 0)}</div>
+                          <div className="grid gap-1 text-sm font-black"><StockStat quantity={totalStock} lowStock={totalLowStock} /></div>
+                          <div className="flex justify-end">
+                            <button type="button" data-tutorial="sku-add-type" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows)} className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 text-xs font-black text-zinc-700 hover:border-black">
+                              <Plus className="size-3.5" /> Type
+                            </button>
+                          </div>
                         </div>
                         {entry.rows.map((row) => (
-                          <div key={row.sku_id} className="grid min-w-0 gap-2 px-3 py-2.5 text-sm sm:grid-cols-2 2xl:grid-cols-[130px_minmax(140px,1fr)_90px_110px_150px] 2xl:items-center">
-                            <div className="min-w-0 font-bold text-zinc-700 2xl:truncate" title={row.sku_code}><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 2xl:hidden">SKU</span>{row.sku_code}</div>
-                            <div className="min-w-0 font-semibold text-zinc-600 2xl:truncate" title={row.variant ?? undefined}><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 2xl:hidden">Type</span>{row.variant ?? "-"}</div>
-                            <div className="font-bold tabular-nums"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 2xl:hidden">Price</span>{formatPrice(row.price)}</div>
-                            <div className="grid gap-1"><span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 2xl:hidden">Stock</span><StockStat quantity={row.quantity} lowStock={row.low_stock_qty} /></div>
-                            <div className="flex flex-wrap gap-1.5 sm:col-span-2 2xl:col-span-1 2xl:justify-end">
-                              <Button type="button" variant="outline" size="sm" onClick={() => openAppendVariation(row, entry.rows)}><Plus className="size-3.5" />Type</Button>
-                              <Button type="button" variant="outline" size="sm" onClick={() => openEdit(row)}><Pencil className="size-3.5" />Edit</Button>
+                          <div key={row.sku_id} className="grid min-w-0 gap-2 px-3 py-2 text-sm sm:grid-cols-2 xl:grid-cols-[minmax(280px,1.45fr)_minmax(160px,1fr)_90px_120px_150px] xl:items-center xl:gap-2">
+                            <div className="min-w-0 break-words font-bold leading-tight text-zinc-700"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">SKU</span>{row.sku_code}</div>
+                            <div className="min-w-0 break-words font-semibold leading-tight text-zinc-600"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Type</span>{row.variant ?? "-"}</div>
+                            <div className="font-bold tabular-nums"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Price</span>{formatPrice(row.price)}</div>
+                            <div className="grid gap-1"><span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Stock</span><StockStat quantity={row.quantity} lowStock={row.low_stock_qty} /></div>
+                            <div className="flex flex-wrap gap-1.5 sm:col-span-2 xl:col-span-1 xl:justify-end">
+                              <Button type="button" variant="outline" size="sm" className="xl:h-8 xl:px-2.5 xl:text-xs" onClick={() => openAppendVariation(row, entry.rows)}><Plus className="size-3.5" />Type</Button>
+                              <Button type="button" variant="outline" size="sm" className="xl:h-8 xl:px-2.5 xl:text-xs" onClick={() => openEdit(row)}><Pencil className="size-3.5" />Edit</Button>
                             </div>
                           </div>
                         ))}
