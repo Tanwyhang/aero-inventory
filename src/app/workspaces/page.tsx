@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
-import { ArrowRight, ChevronDown, Pencil, Plus, UserPlus } from "lucide-react";
+import { ArrowRight, ChevronDown, Pencil, Plus, Trash2, UserPlus } from "lucide-react";
 
 import {
   acceptWorkspaceInviteAction,
   createWorkspaceAction,
+  deleteWorkspaceAction,
   inviteWorkspaceMemberAction,
   revokeWorkspaceInviteAction,
   switchWorkspaceAction,
@@ -110,27 +111,34 @@ export default async function WorkspacesPage({
                     </span>
                   </div>
                 {workspace.role === "admin" ? (
-                  <div className="pointer-events-auto relative z-20 w-fit">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <button type="button" className="inline-flex h-9 w-fit items-center gap-2 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-3 text-xs font-black text-zinc-600 transition hover:border-black hover:bg-white hover:text-black">
-                        <Pencil className="size-3.5" />
-                        Edit name
-                      </button>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))] rounded-2xl p-4">
-                      <PopoverHeader>
-                        <PopoverTitle className="text-base font-black tracking-[-0.04em]">Edit workspace</PopoverTitle>
-                        <PopoverDescription className="text-xs font-semibold">Update the name shown in Aero.</PopoverDescription>
-                      </PopoverHeader>
-                      <form action={updateWorkspaceIdentityAction} className="mt-4 grid gap-3">
-                        <input type="hidden" name="organizationId" value={workspace.organization_id} />
-                        <input type="hidden" name="returnTo" value="/workspaces" />
-                        <Input name="name" required defaultValue={workspace.organization_name} className={inputClassName} placeholder="Workspace name" />
-                        <WorkspaceActionButton confirm="Click Confirm to update this workspace." className="h-11 rounded-xl bg-lime text-sm font-black text-black hover:bg-lime">Save</WorkspaceActionButton>
-                      </form>
-                    </PopoverContent>
-                  </Popover>
+                  <div className="pointer-events-auto relative z-20 flex flex-wrap gap-2">
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <button type="button" className="inline-flex h-9 w-fit items-center gap-2 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-3 text-xs font-black text-zinc-600 transition hover:border-black hover:bg-white hover:text-black">
+                          <Pencil className="size-3.5" />
+                          Edit name
+                        </button>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-[min(20rem,calc(100vw-2rem))] rounded-2xl p-4">
+                        <PopoverHeader>
+                          <PopoverTitle className="text-base font-black tracking-[-0.04em]">Edit workspace</PopoverTitle>
+                          <PopoverDescription className="text-xs font-semibold">Update the name shown in Aero.</PopoverDescription>
+                        </PopoverHeader>
+                        <form action={updateWorkspaceIdentityAction} className="mt-4 grid gap-3">
+                          <input type="hidden" name="organizationId" value={workspace.organization_id} />
+                          <input type="hidden" name="returnTo" value="/workspaces" />
+                          <Input name="name" required defaultValue={workspace.organization_name} className={inputClassName} placeholder="Workspace name" />
+                          <WorkspaceActionButton confirm="Click Confirm to update this workspace." className="h-11 rounded-xl bg-lime text-sm font-black text-black hover:bg-lime">Save</WorkspaceActionButton>
+                        </form>
+                      </PopoverContent>
+                    </Popover>
+                    <form action={deleteWorkspaceAction}>
+                      <input type="hidden" name="organizationId" value={workspace.organization_id} />
+                      <WorkspaceActionButton confirm={`Click Confirm to delete ${workspace.organization_name}. This removes it from workspace selection.`} variant="destructive" className="h-9 rounded-xl px-3 text-xs font-black">
+                        <Trash2 className="size-3.5" />
+                        Delete
+                      </WorkspaceActionButton>
+                    </form>
                   </div>
                 ) : null}
                 </CardContent>

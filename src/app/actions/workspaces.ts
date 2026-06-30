@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 
-import { requireMembership, setSelectedWorkspaceCookie } from "@/lib/auth";
+import { clearSelectedWorkspaceCookie, getSelectedWorkspaceId, requireMembership, setSelectedWorkspaceCookie } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
 const workspaceSchema = z.object({
@@ -26,6 +26,8 @@ const inviteSchema = z.object({
 });
 
 const tokenSchema = z.object({ token: z.string().trim().min(16).max(200) });
+
+const deleteWorkspaceSchema = z.object({ organizationId: z.string().uuid() });
 
 const memberRoleSchema = z.object({
   userId: z.string().uuid(),
@@ -120,6 +122,37 @@ export async function updateWorkspaceIdentityAction(formData: FormData) {
 
   revalidateWorkspaceRoutes();
   redirect(parsed.data.returnTo);
+}
+
+export async function deleteWorkspaceAction(formData: FormData) {
+  const membership = await requireMembership();
+  const parsed = deleteWorkspaceSchema.safeParse({ organizationId: formData.get("organizationId") });
+  if (!parsed.success) redirect("/workspaces?error=workspace");
+
+  const targetWorkspace = membership.workspaces.find((workspace) => workspace.organization_id === parsed.data.organizationId);
+  if (targetWorkspace?.role !== "admin") redirect("/workspaces?error=admin");
+
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("organizations")
+    .update({ archived_at: new Date().toISOString() })
+    .eq("id", parsed.data.organizationId)
+    .select("id")
+    .single();
+
+  if (error) redirect(`/workspaces?error=${encodeURIComponent(error.message)}`);
+
+  const selectedWorkspaceId = await getSelectedWorkspaceId();
+  const deletedSelectedWorkspace = selectedWorkspaceId === parsed.data.organizationId || membership.organization_id === parsed.data.organizationId;
+
+  if (deletedSelectedWorkspace) {
+    const nextWorkspace = membership.workspaces.find((workspace) => workspace.organization_id !== parsed.data.organizationId);
+    if (nextWorkspace) await setSelectedWorkspaceCookie(nextWorkspace.organization_id);
+    else await clearSelectedWorkspaceCookie();
+  }
+
+  revalidateWorkspaceRoutes();
+  redirect("/workspaces");
 }
 
 export async function inviteWorkspaceMemberAction(formData: FormData) {
