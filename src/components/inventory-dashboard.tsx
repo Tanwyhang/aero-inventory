@@ -71,7 +71,7 @@ export function ProductThumb({ label, photoUrl, eager = false }: { label: string
   const washMask = "linear-gradient(to right, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.25) 54%, transparent 100%)";
 
   return (
-    <div className="relative h-full min-h-14 w-20 shrink-0 overflow-hidden bg-white text-xl font-black">
+    <div className="relative h-full min-h-12 w-16 shrink-0 overflow-hidden bg-white text-xl font-black">
       {photoUrl ? (
         <>
           <Image
@@ -733,12 +733,12 @@ function StockRowCard({
         </div>
       </div>
 
-      <div className="hidden xl:grid xl:grid-cols-[88px_minmax(220px,1fr)_150px_210px] xl:items-stretch">
+      <div className="hidden xl:grid xl:grid-cols-[72px_minmax(220px,1fr)_126px_176px] xl:items-stretch">
         <ProductThumb label={row.product_name} photoUrl={row.photo_url} eager={!nested && index === 0} />
 
-        <div className="flex min-w-0 items-center px-2 py-1.5">
+        <div className="flex min-w-0 items-center px-2 py-1">
           <div className="min-w-0 pr-2">
-            <h2 className="truncate text-base font-black tracking-[-0.045em]">{row.product_name}</h2>
+            <h2 className="break-words text-sm font-black leading-tight tracking-[-0.04em]">{row.product_name}</h2>
             <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] font-bold text-zinc-500">
               {row.variant ? <span className="rounded-md bg-zinc-100 px-2 py-0.5">{row.variant}</span> : null}
               <span className="rounded-md bg-zinc-100 px-2 py-0.5">{row.sku_code}</span>
@@ -746,36 +746,36 @@ function StockRowCard({
           </div>
         </div>
 
-        <div className={cn("col-span-2 m-1.5 mt-0 rounded-md border bg-zinc-50 p-1.5 xl:col-span-1 xl:m-1.5 xl:ml-0", stockCardBorder(row))}>
+        <div className={cn("col-span-2 m-1.5 mt-0 rounded-md border bg-zinc-50 p-1.5 xl:col-span-1 xl:m-1 xl:ml-0", stockCardBorder(row))}>
           <div>
             <div>
               <div className="flex items-end gap-2">
-                <span className="text-xl font-black leading-none tracking-[-0.08em]">{row.quantity}</span>
+                <span className="text-lg font-black leading-none tracking-[-0.08em]">{row.quantity}</span>
               </div>
-              <div className="mt-0.5 text-[11px] font-bold text-zinc-500">Low at {row.low_stock_qty}</div>
+              <div className="mt-0.5 text-[10px] font-bold text-zinc-500">Low at {row.low_stock_qty}</div>
             </div>
           </div>
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white ring-1 ring-border">
             <div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: stockColor(row.quantity, row.low_stock_qty) }} />
           </div>
           <div className="mt-2 grid grid-cols-2 gap-1.5">
-            <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-10 rounded-md border-lime bg-white text-sm font-black hover:bg-white xl:h-7" onClick={() => onAdjust({ row, direction: "deduct" })}>
+            <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-10 rounded-md border-lime bg-white text-sm font-black hover:bg-white xl:h-6" onClick={() => onAdjust({ row, direction: "deduct" })}>
               <Minus className="size-4" />
             </Button>
-            <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-10 rounded-md bg-lime text-sm font-black text-black hover:bg-lime xl:h-7" onClick={() => onAdjust({ row, direction: "add" })}>
+            <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-10 rounded-md bg-lime text-sm font-black text-black hover:bg-lime xl:h-6" onClick={() => onAdjust({ row, direction: "add" })}>
               <Plus className="size-4" />
             </Button>
           </div>
         </div>
 
-        <div className="col-span-2 mx-1.5 mb-1.5 rounded-md border border-border bg-white p-1.5 xl:col-span-1 xl:m-1.5 xl:ml-0 xl:bg-zinc-50">
+        <div className="col-span-2 mx-1.5 mb-1.5 rounded-md border border-border bg-white p-1.5 xl:col-span-1 xl:m-1 xl:ml-0 xl:bg-zinc-50">
           {effectiveRole === "admin" && isAdminRow(row) ? (
             <>
-              <div className="truncate text-base font-black tracking-[-0.045em]">{row.supplier_name ?? "No supplier"}</div>
-              <div className="text-[11px] font-bold text-zinc-500">{row.phone_raw ?? "No phone number"}</div>
-              <div className="mt-2">
+              <div className="break-words text-sm font-black leading-tight tracking-[-0.04em]">{row.supplier_name ?? "No supplier"}</div>
+              <div className="text-[10px] font-bold text-zinc-500">{row.phone_raw ?? "No phone number"}</div>
+              <div className="mt-1.5">
                 {row.whatsapp_number ? (
-                  <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} className="h-10 w-full rounded-md bg-[#25D366] px-3 text-xs font-black text-white hover:bg-[#25D366] xl:h-8" />
+                  <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} className="h-10 w-full rounded-md bg-[#25D366] px-3 text-[11px] font-black text-white hover:bg-[#25D366] xl:h-7" />
                 ) : null}
               </div>
             </>
@@ -814,11 +814,11 @@ function StockGroupCard({
   const primarySupplier = entry.rows.find(isAdminRow);
 
   return (
-    <FluidEntrySurface data-tutorial="stock-group" entryDelay={Math.min(index * 0.04, 0.28)} className="overflow-hidden rounded-xl border border-zinc-200 bg-white transition-colors hover:border-zinc-300" contentClassName="p-0">
-      <div className="grid lg:grid-cols-[minmax(280px,360px)_1fr]">
-        <div className="border-b border-zinc-200 bg-zinc-50/70 p-3 lg:border-b-0 lg:border-r lg:p-4">
-          <div className="flex min-w-0 gap-3 lg:items-start">
-            <div className="relative size-14 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-white ring-1 ring-black/5">
+    <FluidEntrySurface data-tutorial="stock-group" entryDelay={Math.min(index * 0.04, 0.28)} className="overflow-hidden rounded-lg border border-zinc-200 bg-white transition-colors hover:border-zinc-300" contentClassName="p-0">
+      <div className="grid lg:grid-cols-[minmax(240px,300px)_1fr] 2xl:grid-cols-[minmax(280px,340px)_1fr]">
+        <div className="border-b border-zinc-200 bg-zinc-50/70 p-3 lg:border-b-0 lg:border-r lg:p-2.5">
+          <div className="flex min-w-0 gap-2.5 lg:items-start">
+            <div className="relative size-14 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-white ring-1 ring-black/5 lg:size-11">
               {entry.photoUrl ? (
                 <Image src={entry.photoUrl} alt={entry.productName} fill loading={index === 0 ? "eager" : "lazy"} sizes="56px" className="object-cover" />
               ) : (
@@ -827,24 +827,24 @@ function StockGroupCard({
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
-                <span className="rounded-md bg-black px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.12em] text-lime">Main SKU</span>
+                <span className="rounded-md bg-black px-1.5 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] text-lime">Main SKU</span>
                 <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] ring-1", status.className)}>{status.label}</span>
               </div>
-              <h2 className="mt-1 line-clamp-2 text-base font-black tracking-[-0.045em]">{entry.productName}</h2>
-              <div className="mt-1 flex flex-wrap gap-1 text-xs font-bold text-zinc-500">
+              <h2 className="mt-1 break-words text-sm font-black leading-tight tracking-[-0.04em]">{entry.productName}</h2>
+              <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-bold text-zinc-500">
                 <span className="rounded-md bg-zinc-100 px-2 py-0.5">{entry.variationName}</span>
                 <span className="rounded-md bg-zinc-100 px-2 py-0.5">{entry.rows.length} variants</span>
               </div>
             </div>
           </div>
 
-          <div className={cn("mt-3 rounded-lg border bg-white p-2", borderClassName)}>
+          <div className={cn("mt-2 rounded-md border bg-white p-1.5", borderClassName)}>
             <div className="flex items-end justify-between gap-3">
               <div>
                 <div className="text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400">Total Stock</div>
-                <div className="text-2xl font-black leading-none tracking-[-0.08em]">{entry.totalQuantity}</div>
+                <div className="text-xl font-black leading-none tracking-[-0.08em]">{entry.totalQuantity}</div>
               </div>
-              <div className="text-right text-xs font-bold text-zinc-500">Low total {entry.totalLowStock}</div>
+              <div className="text-right text-[10px] font-bold text-zinc-500">Low total {entry.totalLowStock}</div>
             </div>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-zinc-100 ring-1 ring-border">
               <div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: stockColor(entry.totalQuantity, entry.totalLowStock) }} />
@@ -852,30 +852,30 @@ function StockGroupCard({
           </div>
 
           {effectiveRole === "admin" && primarySupplier ? (
-            <div className="mt-3 hidden rounded-lg border border-border bg-white p-2 lg:block">
-              <div className="truncate text-base font-black tracking-[-0.045em]">{primarySupplier.supplier_name ?? "No supplier"}</div>
-              <div className="text-xs font-bold text-zinc-500">{primarySupplier.phone_raw ?? "No phone number"}</div>
+            <div className="mt-2 hidden rounded-md border border-border bg-white p-1.5 lg:block">
+              <div className="break-words text-sm font-black leading-tight tracking-[-0.04em]">{primarySupplier.supplier_name ?? "No supplier"}</div>
+              <div className="text-[10px] font-bold text-zinc-500">{primarySupplier.phone_raw ?? "No phone number"}</div>
             </div>
           ) : null}
         </div>
 
         <div className="min-w-0 overflow-x-auto">
-          <div className="hidden min-w-[760px] grid-cols-[1.1fr_1.2fr_150px_220px] border-b border-zinc-200 bg-zinc-50 px-3 py-2 text-[11px] font-black uppercase tracking-[0.14em] text-zinc-400 lg:grid">
+          <div className="hidden min-w-[700px] grid-cols-[1.1fr_1.35fr_120px_178px] border-b border-zinc-200 bg-zinc-50 px-2.5 py-1.5 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-400 lg:grid">
             <div>SKU</div>
             <div>Type</div>
             <div>Stock</div>
             <div className="text-right">Action</div>
           </div>
-          <div className="min-w-0 lg:min-w-[760px]">
+          <div className="min-w-0 lg:min-w-[700px]">
             {entry.rows.map((row) => {
               const childPercentage = Math.round(stockRatio(row.quantity, row.low_stock_qty) * 100);
               const childStatus = stockStatus(row);
 
               return (
-                <div key={`${entry.id}-${row.sku_id}-${row.location_id}`} className="grid gap-2 border-b border-zinc-100 p-3 last:border-b-0 lg:grid-cols-[1.1fr_1.2fr_150px_220px] lg:items-center lg:gap-4">
+                <div key={`${entry.id}-${row.sku_id}-${row.location_id}`} className="grid gap-2 border-b border-zinc-100 p-3 last:border-b-0 lg:grid-cols-[1.1fr_1.35fr_120px_178px] lg:items-center lg:gap-2.5 lg:px-2.5 lg:py-2">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <div className="truncate text-sm font-black tracking-[-0.025em] text-zinc-700 lg:text-base">{row.sku_code}</div>
+                      <div className="break-words text-sm font-black leading-tight tracking-[-0.025em] text-zinc-700">{row.sku_code}</div>
                       <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-black uppercase tracking-[0.1em] ring-1 lg:hidden", childStatus.className)}>{childStatus.label}</span>
                     </div>
                     <div className="mt-1 flex flex-wrap gap-1 text-[10px] font-bold text-zinc-500 lg:hidden">
@@ -884,35 +884,35 @@ function StockGroupCard({
                     </div>
                   </div>
 
-                  <div className="min-w-0 text-sm font-black tracking-[-0.025em] text-zinc-600 lg:text-base">
-                    <span className="line-clamp-1">{row.variant || row.product_name}</span>
+                  <div className="min-w-0 text-sm font-black leading-tight tracking-[-0.025em] text-zinc-600">
+                    <span className="break-words">{row.variant || row.product_name}</span>
                   </div>
 
                   <div className="min-w-0 rounded-lg border border-zinc-200 bg-zinc-50 p-2 lg:border-0 lg:bg-transparent lg:p-0">
-                    <div className="flex items-baseline gap-1 font-black tabular-nums">
+                    <div className="flex items-baseline gap-1 text-sm font-black tabular-nums">
                       <span className={row.quantity <= row.low_stock_qty ? "text-orange" : "text-zinc-900"}>{row.quantity}</span>
                       <span className="text-[11px] font-semibold text-zinc-400">Low {row.low_stock_qty}</span>
                     </div>
-                    <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white ring-1 ring-border lg:bg-zinc-100">
+                    <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white ring-1 ring-border lg:bg-zinc-100">
                       <div className="h-full rounded-full" style={{ width: `${childPercentage}%`, backgroundColor: stockColor(row.quantity, row.low_stock_qty) }} />
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2 lg:grid-cols-[42px_42px_minmax(0,1fr)] lg:justify-end">
-                    <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-10 rounded-lg border-border bg-white px-0 text-sm font-black hover:bg-white" onClick={() => onAdjust({ row, direction: "deduct" })}>
+                  <div className="grid grid-cols-2 gap-2 lg:grid-cols-[34px_34px_minmax(0,1fr)] lg:gap-1.5 lg:justify-end">
+                    <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-10 rounded-lg border-border bg-white px-0 text-sm font-black hover:bg-white lg:h-8 lg:rounded-md" onClick={() => onAdjust({ row, direction: "deduct" })}>
                       <Minus className="size-4" />
                     </Button>
-                    <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-10 rounded-lg bg-lime px-0 text-sm font-black text-black hover:bg-lime" onClick={() => onAdjust({ row, direction: "add" })}>
+                    <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-10 rounded-lg bg-lime px-0 text-sm font-black text-black hover:bg-lime lg:h-8 lg:rounded-md" onClick={() => onAdjust({ row, direction: "add" })}>
                       <Plus className="size-4" />
                     </Button>
                     {effectiveRole === "admin" && isAdminRow(row) ? (
                       row.whatsapp_number ? (
-                        <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} label="WhatsApp" className="col-span-2 h-10 rounded-lg bg-[#25D366] px-3 text-xs font-black text-white hover:bg-[#25D366] lg:col-span-1" />
+                        <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} label="WhatsApp" className="col-span-2 h-10 rounded-lg bg-[#25D366] px-3 text-xs font-black text-white hover:bg-[#25D366] lg:col-span-1 lg:h-8 lg:rounded-md lg:px-2 lg:text-[11px]" />
                       ) : (
-                        <Button type="button" disabled className="col-span-2 h-10 rounded-lg bg-zinc-200 px-3 text-xs font-black text-zinc-500 lg:col-span-1">No Contact</Button>
+                        <Button type="button" disabled className="col-span-2 h-10 rounded-lg bg-zinc-200 px-3 text-xs font-black text-zinc-500 lg:col-span-1 lg:h-8 lg:rounded-md lg:px-2 lg:text-[11px]">No Contact</Button>
                       )
                     ) : (
-                      <Button type="button" variant="outline" className="col-span-2 h-10 rounded-lg bg-white px-3 text-xs font-black hover:bg-white lg:col-span-1" onClick={() => onPing(row)}>Ping</Button>
+                      <Button type="button" variant="outline" className="col-span-2 h-10 rounded-lg bg-white px-3 text-xs font-black hover:bg-white lg:col-span-1 lg:h-8 lg:rounded-md lg:px-2 lg:text-[11px]" onClick={() => onPing(row)}>Ping</Button>
                     )}
                   </div>
                 </div>
@@ -1074,7 +1074,7 @@ export function InventoryDashboard({
             ) : null}
           </FluidEntrySurface>
 
-          <div className="mt-3 grid gap-2 sm:mt-4 sm:gap-3">
+          <div className="mt-3 grid gap-2 sm:mt-4 sm:gap-2.5">
             {stockEntries.map((entry, index) => {
               if (entry.type === "group") {
                 return (
