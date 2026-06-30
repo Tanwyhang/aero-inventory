@@ -305,6 +305,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
   const [error, setError] = useState<string | null>(null);
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
+  const [variationNotice, setVariationNotice] = useState<string | null>(null);
   const [categoryDraft, setCategoryDraft] = useState("");
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [isCategoryEditorOpen, setIsCategoryEditorOpen] = useState(false);
@@ -415,10 +416,15 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
   }
 
   function addVariationItem() {
+    const nextIndex = variationDraft.items.length + 1;
+    const nextItem = newVariationItem(nextIndex);
+
     setVariationDraft((current) => ({
       ...current,
-      items: [...current.items, newVariationItem(current.items.length + 1)],
+      items: [...current.items, nextItem],
     }));
+    setVariationNotice(`Type ${nextIndex} added. ${nextIndex} new types queued.`);
+    toast.success("Type added", { description: `Type ${nextIndex} is queued. Review and save to apply it.` });
   }
 
   function openAppendVariation(row: AdminSkuManagerRow, groupRows?: AdminSkuManagerRow[]) {
@@ -449,16 +455,41 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
       phoneRaw: first.phone_raw ?? demoDraft.phoneRaw,
       items: [newVariationItem(sourceRows.length + 1)],
     });
+    setVariationNotice("1 new type queued. Review and save to apply it.");
     setPhotoFile(null);
     setError(null);
     setIsOpen(true);
   }
 
   function removeVariationItem(clientId: string) {
-    setVariationDraft((current) => ({
-      ...current,
-      items: current.items.length > 1 ? current.items.filter((item) => item.clientId !== clientId) : current.items,
-    }));
+    if (variationDraft.items.length <= 1) return;
+
+    const item = variationDraft.items.find((draftItem) => draftItem.clientId === clientId);
+    const itemIndex = variationDraft.items.findIndex((draftItem) => draftItem.clientId === clientId) + 1;
+    if (!item) return;
+
+    setConfirmError(null);
+    setConfirmation({
+      title: "Remove Type?",
+      description: "This removes the queued type from this bundle before saving. Existing saved SKUs are not changed until you confirm a delete from Edit.",
+      records: [
+        { label: "Bundle", value: variationDraft.productName },
+        { label: "Type Slot", value: `Type ${itemIndex}` },
+        { label: "Type Name", value: item.name || "Not named yet" },
+        { label: "SKU", value: item.skuCode || "Not set yet" },
+        { label: "Queued Types", value: `${variationDraft.items.length} -> ${variationDraft.items.length - 1}` },
+      ],
+      onConfirm: async () => {
+        const nextCount = variationDraft.items.length - 1;
+        setVariationDraft((current) => ({
+          ...current,
+          items: current.items.length > 1 ? current.items.filter((draftItem) => draftItem.clientId !== clientId) : current.items,
+        }));
+        setVariationNotice(`Type ${itemIndex} removed. ${nextCount} new ${nextCount === 1 ? "type" : "types"} still queued.`);
+        toast.success("Type removed", { description: `${item.name || `Type ${itemIndex}`} was removed from the pending bundle update.` });
+        setConfirmation(null);
+      },
+    });
   }
 
   function openCreate() {
@@ -474,6 +505,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
     });
     setCreateMode("single");
     setVariationDraft(newVariationDraft());
+    setVariationNotice(null);
     setPhotoFile(null);
     setError(null);
     setIsOpen(true);
@@ -501,6 +533,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
       demoPhotoPath: undefined,
     });
     setCreateMode("single");
+    setVariationNotice(null);
     setError(null);
     setIsOpen(true);
   }
@@ -527,6 +560,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
         { label: "Supplier", value: variationDraft.supplierName },
         { label: "Contact", value: variationDraft.contactName || variationDraft.phoneRaw },
         { label: "Images", value: variationDraft.addVariationImages ? "Required per type" : "Not required" },
+        { label: "Type Details", value: normalizedVariationItems().map((item, index) => `${index + 1}. ${item.name || "Unnamed"} (${item.skuCode || "No SKU"})`).join("; ") },
         { label: "Starting Stock", value: normalizedVariationItems().reduce((sum, item) => sum + item.openingStock, 0) },
       ],
       onConfirm: executeVariationSave,
@@ -571,6 +605,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
     setIsOpen(false);
     setCreateMode("single");
     setVariationDraft(newVariationDraft());
+    setVariationNotice(null);
     router.refresh();
   }
 
@@ -1115,12 +1150,19 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
 
                   <section className="rounded-2xl border border-white/50 bg-white/55 p-5 backdrop-blur-lg">
                     <div className="flex flex-wrap items-center justify-between gap-3">
-                      <h3 className="text-sm font-black uppercase tracking-[0.14em] text-zinc-500">Types</h3>
+                      <div>
+                        <h3 className="text-sm font-black uppercase tracking-[0.14em] text-zinc-500">Types</h3>
+                        <div className="mt-1 text-xs font-bold text-zinc-500">
+                          {variationDraft.items.length} new {variationDraft.items.length === 1 ? "type" : "types"} queued for this bundle
+                        </div>
+                      </div>
                       <Button type="button" variant="outline" onClick={addVariationItem} className="h-10 rounded-lg border-border bg-white px-4 text-sm font-bold hover:bg-white">
                         <Plus className="size-4" />
                         Add Type
                       </Button>
                     </div>
+
+                    {variationNotice ? <div className="mt-3 rounded-xl border border-lime/60 bg-lime/15 px-3 py-2 text-sm font-black text-zinc-800">{variationNotice}</div> : null}
 
                     <div className="mt-5 grid gap-4">
                       {variationDraft.items.map((item, index) => (
