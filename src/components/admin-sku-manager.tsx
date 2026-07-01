@@ -995,7 +995,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                               <Plus className="size-3" /> Type
                             </button>
                             <button type="button" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows, false)} className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] font-black text-zinc-700 hover:border-black">
-                              <Pencil className="size-3" /> Manage
+                              <Pencil className="size-3" /> Edit
                             </button>
                           </div>
                         </div>
@@ -1050,7 +1050,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                             <Plus className="size-3.5" /> Type
                           </button>
                           <button type="button" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows, false)} className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 text-xs font-black text-zinc-700 hover:border-black">
-                            <Pencil className="size-3.5" /> Manage
+                            <Pencil className="size-3.5" /> Edit
                           </button>
                         </div>
                       </div>
@@ -1176,7 +1176,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
               <form onSubmit={isEditing || createMode === "single" ? handleSubmit : handleVariationSubmit}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-xl font-black tracking-[-0.05em] sm:text-2xl">{isEditing ? "Edit SKU" : createMode === "variation" ? (variationDraft.variationGroupId ? "Manage Bundle" : "Add SKU With Types") : "Add SKU"}</h2>
+                  <h2 className="text-xl font-black tracking-[-0.05em] sm:text-2xl">{isEditing ? "Edit SKU" : createMode === "variation" ? (variationDraft.variationGroupId ? "Edit Bundle" : "Add SKU With Types") : "Add SKU"}</h2>
                   <p className="mt-1 text-sm font-semibold text-zinc-500">{createMode === "variation" && !isEditing ? (variationDraft.variationGroupId ? "Edit saved child SKUs, update stock rules, and add new types when needed." : "Create one main SKU with types like flavor, size, or color.") : "Manage product SKU details and admin-only supplier contact information."}</p>
                 </div>
                 <button type="button" onClick={() => setIsOpen(false)} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-white text-black" aria-label="Close SKU form">
