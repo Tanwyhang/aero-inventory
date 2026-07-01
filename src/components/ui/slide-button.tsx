@@ -68,9 +68,10 @@ function StatusIcon({ status }: { status: "loading" | "success" | "error" }) {
 
 export interface SlideButtonProps extends Omit<React.ComponentProps<"button">, "onComplete"> {
   onComplete?: () => void | Promise<void>;
+  label?: string;
 }
 
-export const SlideButton = forwardRef<HTMLButtonElement, SlideButtonProps>(function SlideButton({ className, onComplete, disabled, ...props }, ref) {
+export const SlideButton = forwardRef<HTMLButtonElement, SlideButtonProps>(function SlideButton({ className, onComplete, disabled, label = "Confirm", ...props }, ref) {
   const [isDragging, setIsDragging] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
@@ -163,7 +164,7 @@ export const SlideButton = forwardRef<HTMLButtonElement, SlideButtonProps>(funct
       </AnimatePresence>
       {!completed ? (
         <span className="pointer-events-none absolute inset-0 flex items-center justify-center gap-1.5 pl-10 text-xs font-black uppercase tracking-[0.12em] text-black/65 sm:gap-2 sm:pl-12 sm:text-sm sm:tracking-[0.14em]">
-          Confirm
+          {label}
           <span className="flex items-center text-black/45">
             <ChevronRight className="size-4" />
             <ChevronRight className="-ml-2 size-4" />

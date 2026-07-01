@@ -16,6 +16,7 @@ export function ConfirmSlideSheet({
   description,
   records,
   error,
+  confirmLabel = "Confirm",
   onCancel,
   onConfirm,
 }: {
@@ -23,6 +24,7 @@ export function ConfirmSlideSheet({
   description: string;
   records: ConfirmationRecord[];
   error?: string | null;
+  confirmLabel?: string;
   onCancel: () => void;
   onConfirm: () => void | Promise<void>;
 }) {
@@ -53,7 +55,7 @@ export function ConfirmSlideSheet({
           {error ? <div className="mt-4 rounded-xl border border-border bg-white px-4 py-3 text-sm font-black text-black">{error}</div> : null}
 
           <div data-tutorial="confirmation-action" className="mt-4 flex justify-center sm:mt-6">
-            <SlideButton onComplete={onConfirm} />
+            <SlideButton label={confirmLabel} onComplete={onConfirm} />
           </div>
         </FluidEntrySurface>
       </DialogContent>
