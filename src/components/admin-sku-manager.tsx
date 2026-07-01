@@ -306,6 +306,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [variationNotice, setVariationNotice] = useState<string | null>(null);
+  const [managedVariationRows, setManagedVariationRows] = useState<AdminSkuManagerRow[]>([]);
   const [categoryDraft, setCategoryDraft] = useState("");
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
   const [isCategoryEditorOpen, setIsCategoryEditorOpen] = useState(false);
@@ -455,6 +456,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
       phoneRaw: first.phone_raw ?? demoDraft.phoneRaw,
       items: [newVariationItem(sourceRows.length + 1)],
     });
+    setManagedVariationRows(sourceRows);
     setVariationNotice("1 new type queued. Review and save to apply it.");
     setPhotoFile(null);
     setError(null);
@@ -506,6 +508,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
     setCreateMode("single");
     setVariationDraft(newVariationDraft());
     setVariationNotice(null);
+    setManagedVariationRows([]);
     setPhotoFile(null);
     setError(null);
     setIsOpen(true);
@@ -534,6 +537,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
     });
     setCreateMode("single");
     setVariationNotice(null);
+    setManagedVariationRows([]);
     setError(null);
     setIsOpen(true);
   }
@@ -606,6 +610,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
     setCreateMode("single");
     setVariationDraft(newVariationDraft());
     setVariationNotice(null);
+    setManagedVariationRows([]);
     router.refresh();
   }
 
@@ -875,8 +880,8 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                             <button type="button" data-tutorial="sku-add-type" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows)} className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] font-black text-zinc-700 hover:border-black">
                               <Plus className="size-3" /> Type
                             </button>
-                            <button type="button" onClick={() => firstRow && openEdit(firstRow)} className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] font-black text-zinc-700 hover:border-black">
-                              <Pencil className="size-3" /> Edit
+                            <button type="button" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows)} className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] font-black text-zinc-700 hover:border-black">
+                              <Pencil className="size-3" /> Manage
                             </button>
                           </div>
                         </div>
@@ -930,8 +935,8 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                           <button type="button" data-tutorial="sku-add-type" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows)} className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 text-xs font-black text-zinc-700 hover:border-black">
                             <Plus className="size-3.5" /> Type
                           </button>
-                          <button type="button" onClick={() => firstRow && openEdit(firstRow)} className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 text-xs font-black text-zinc-700 hover:border-black">
-                            <Pencil className="size-3.5" /> Edit
+                          <button type="button" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows)} className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 text-xs font-black text-zinc-700 hover:border-black">
+                            <Pencil className="size-3.5" /> Manage
                           </button>
                         </div>
                       </div>
@@ -1057,8 +1062,8 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
               <form onSubmit={isEditing || createMode === "single" ? handleSubmit : handleVariationSubmit}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <h2 className="text-xl font-black tracking-[-0.05em] sm:text-2xl">{isEditing ? "Edit SKU" : createMode === "variation" ? (variationDraft.variationGroupId ? "Add Types" : "Add SKU With Types") : "Add SKU"}</h2>
-                  <p className="mt-1 text-sm font-semibold text-zinc-500">{createMode === "variation" && !isEditing ? (variationDraft.variationGroupId ? "Add more types under this main SKU." : "Create one main SKU with types like flavor, size, or color.") : "Manage product SKU details and admin-only supplier contact information."}</p>
+                  <h2 className="text-xl font-black tracking-[-0.05em] sm:text-2xl">{isEditing ? "Edit SKU" : createMode === "variation" ? (variationDraft.variationGroupId ? "Manage Bundle" : "Add SKU With Types") : "Add SKU"}</h2>
+                  <p className="mt-1 text-sm font-semibold text-zinc-500">{createMode === "variation" && !isEditing ? (variationDraft.variationGroupId ? "Review existing variants and add new types under this main SKU." : "Create one main SKU with types like flavor, size, or color.") : "Manage product SKU details and admin-only supplier contact information."}</p>
                 </div>
                 <button type="button" onClick={() => setIsOpen(false)} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-white text-black" aria-label="Close SKU form">
                   <X className="size-5" />
@@ -1154,6 +1159,36 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                     </FormSection>
                   </div>
 
+                  {variationDraft.variationGroupId && managedVariationRows.length > 0 ? (
+                    <section className="rounded-2xl border border-zinc-200 bg-white p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h3 className="text-sm font-black uppercase tracking-[0.14em] text-zinc-500">Existing Types</h3>
+                          <p className="mt-1 text-xs font-bold text-zinc-500">Already saved in this bundle. Add new types below.</p>
+                        </div>
+                        <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs font-black text-zinc-600">{managedVariationRows.length} saved</div>
+                      </div>
+                      <div className="mt-4 overflow-hidden rounded-xl border border-zinc-200">
+                        <div className="hidden grid-cols-[1.1fr_1fr_90px_110px] bg-zinc-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 md:grid">
+                          <div>SKU</div>
+                          <div>Type</div>
+                          <div>Price</div>
+                          <div>Stock</div>
+                        </div>
+                        <div className="divide-y divide-zinc-100">
+                          {managedVariationRows.map((row) => (
+                            <div key={row.sku_id} className="grid gap-2 px-3 py-2 text-sm md:grid-cols-[1.1fr_1fr_90px_110px] md:items-center">
+                              <div className="break-words font-black leading-tight text-zinc-800"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 md:hidden">SKU</span>{row.sku_code}</div>
+                              <div className="break-words font-semibold leading-tight text-zinc-600"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 md:hidden">Type</span>{row.variant ?? "-"}</div>
+                              <div className="font-bold tabular-nums"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 md:hidden">Price</span>{formatPrice(row.price)}</div>
+                              <div className="grid gap-1"><span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 md:hidden">Stock</span><StockStat quantity={row.quantity} lowStock={row.low_stock_qty} /></div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </section>
+                  ) : null}
+
                   <section className="rounded-2xl border border-white/50 bg-white/55 p-5 backdrop-blur-lg">
                     <div className="flex flex-wrap items-center justify-between gap-3">
                       <div>
@@ -1207,7 +1242,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                 <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>Cancel</Button>
                 <Button data-tutorial="sku-modal-review" disabled={isPending}>
                   {isPending ? <LumaSpinner label="Saving SKU" /> : isEditing ? <Save className="size-5" /> : <Plus className="size-5" />}
-                  {isPending ? "Saving..." : isEditing ? "Review SKU" : createMode === "variation" ? "Review SKU Types" : "Review SKU"}
+                  {isPending ? "Saving..." : isEditing ? "Review SKU" : createMode === "variation" ? (variationDraft.variationGroupId ? "Review Bundle Types" : "Review SKU Types") : "Review SKU"}
                 </Button>
               </div>
               </form>
