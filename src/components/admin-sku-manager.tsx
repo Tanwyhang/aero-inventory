@@ -892,47 +892,48 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                     </div>
 
                     <div className="min-w-0 overflow-x-auto">
-                      <div className="min-w-0 divide-y divide-zinc-100 xl:min-w-[860px]">
-                        <div className="hidden bg-white xl:grid xl:grid-cols-[minmax(280px,1.45fr)_minmax(160px,1fr)_90px_120px_150px] xl:items-center xl:gap-2 xl:px-3 xl:py-2">
-                          <div className="flex min-w-0 items-center gap-2.5">
-                            <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-md border border-zinc-200 bg-lime text-base font-black">
-                              {firstRow?.photo_url ? <Image src={firstRow.photo_url} alt={entry.productName} width={40} height={40} className="size-full object-cover" /> : entry.productName.slice(0, 1)}
-                            </div>
-                            <div className="min-w-0">
-                              <div className="break-words text-sm font-black leading-tight tracking-[-0.035em] text-black">{entry.productName}</div>
-                              <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] font-bold text-zinc-500">
-                                <span>Main SKU</span>
-                                <span>·</span>
-                                <span>{entry.variationName}</span>
-                                <span>·</span>
-                                <span>{entry.rows.length} types</span>
+                      <div className="min-w-0 xl:grid xl:min-w-[860px] xl:grid-cols-[minmax(0,1fr)_150px] xl:items-stretch">
+                        <div className="divide-y divide-zinc-100">
+                          <div className="hidden bg-white xl:grid xl:grid-cols-[minmax(280px,1.45fr)_minmax(160px,1fr)_90px_120px] xl:items-center xl:gap-2 xl:px-3 xl:py-2">
+                            <div className="flex min-w-0 items-center gap-2.5">
+                              <div className="grid size-10 shrink-0 place-items-center overflow-hidden rounded-md border border-zinc-200 bg-lime text-base font-black">
+                                {firstRow?.photo_url ? <Image src={firstRow.photo_url} alt={entry.productName} width={40} height={40} className="size-full object-cover" /> : entry.productName.slice(0, 1)}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="break-words text-sm font-black leading-tight tracking-[-0.035em] text-black">{entry.productName}</div>
+                                <div className="mt-0.5 flex flex-wrap gap-1 text-[10px] font-bold text-zinc-500">
+                                  <span>Main SKU</span>
+                                  <span>·</span>
+                                  <span>{entry.variationName}</span>
+                                  <span>·</span>
+                                  <span>{entry.rows.length} types</span>
+                                </div>
                               </div>
                             </div>
+                            <div className="min-w-0 text-xs font-bold leading-tight text-zinc-500">
+                              <div className="break-words">{firstRow?.category_name ?? "Grouped types"}</div>
+                              <div className="mt-0.5 text-[10px] text-zinc-400">{firstRow?.supplier_name ?? "Main SKU"}</div>
+                            </div>
+                            <div className="text-sm font-black tabular-nums text-zinc-900">{formatPrice(firstRow?.price ?? 0)}</div>
+                            <div className="grid gap-1 text-sm font-black"><StockStat quantity={totalStock} lowStock={totalLowStock} /></div>
                           </div>
-                          <div className="min-w-0 text-xs font-bold leading-tight text-zinc-500">
-                            <div className="break-words">{firstRow?.category_name ?? "Grouped types"}</div>
-                            <div className="mt-0.5 text-[10px] text-zinc-400">{firstRow?.supplier_name ?? "Main SKU"}</div>
-                          </div>
-                          <div className="text-sm font-black tabular-nums text-zinc-900">{formatPrice(firstRow?.price ?? 0)}</div>
-                          <div className="grid gap-1 text-sm font-black"><StockStat quantity={totalStock} lowStock={totalLowStock} /></div>
-                          <div className="flex justify-end gap-1.5">
-                            <button type="button" data-tutorial="sku-add-type" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows)} className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 text-xs font-black text-zinc-700 hover:border-black">
-                              <Plus className="size-3.5" /> Type
-                            </button>
-                            <button type="button" onClick={() => firstRow && openEdit(firstRow)} className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 text-xs font-black text-zinc-700 hover:border-black">
-                              <Pencil className="size-3.5" /> Edit
-                            </button>
-                          </div>
+                          {entry.rows.map((row) => (
+                            <div key={row.sku_id} className="grid min-w-0 gap-2 px-3 py-2 text-sm sm:grid-cols-2 xl:grid-cols-[minmax(280px,1.45fr)_minmax(160px,1fr)_90px_120px] xl:items-center xl:gap-2">
+                              <div className="min-w-0 break-words font-bold leading-tight text-zinc-700"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">SKU</span>{row.sku_code}</div>
+                              <div className="min-w-0 break-words font-semibold leading-tight text-zinc-600"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Type</span>{row.variant ?? "-"}</div>
+                              <div className="font-bold tabular-nums"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Price</span>{formatPrice(row.price)}</div>
+                              <div className="grid gap-1"><span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Stock</span><StockStat quantity={row.quantity} lowStock={row.low_stock_qty} /></div>
+                            </div>
+                          ))}
                         </div>
-                        {entry.rows.map((row) => (
-                          <div key={row.sku_id} className="grid min-w-0 gap-2 px-3 py-2 text-sm sm:grid-cols-2 xl:grid-cols-[minmax(280px,1.45fr)_minmax(160px,1fr)_90px_120px_150px] xl:items-center xl:gap-2">
-                            <div className="min-w-0 break-words font-bold leading-tight text-zinc-700"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">SKU</span>{row.sku_code}</div>
-                            <div className="min-w-0 break-words font-semibold leading-tight text-zinc-600"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Type</span>{row.variant ?? "-"}</div>
-                            <div className="font-bold tabular-nums"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Price</span>{formatPrice(row.price)}</div>
-                            <div className="grid gap-1"><span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Stock</span><StockStat quantity={row.quantity} lowStock={row.low_stock_qty} /></div>
-                            <div className="hidden xl:block" aria-hidden="true" />
-                          </div>
-                        ))}
+                        <div className="hidden border-l border-zinc-100 bg-white px-3 py-3 xl:flex xl:flex-col xl:items-end xl:gap-2">
+                          <button type="button" data-tutorial="sku-add-type" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows)} className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 text-xs font-black text-zinc-700 hover:border-black">
+                            <Plus className="size-3.5" /> Type
+                          </button>
+                          <button type="button" onClick={() => firstRow && openEdit(firstRow)} className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 text-xs font-black text-zinc-700 hover:border-black">
+                            <Pencil className="size-3.5" /> Edit
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </FluidEntrySurface>
