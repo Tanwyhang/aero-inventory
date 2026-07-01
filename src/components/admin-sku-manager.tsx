@@ -871,9 +871,14 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                           <div className="line-clamp-2 text-sm font-black tracking-[-0.03em]">{entry.productName}</div>
                           <div className="mt-1 text-xs font-bold text-zinc-500">Main SKU</div>
                           <div className="mt-1 text-xs font-semibold text-zinc-400">{entry.variationName} · {entry.rows.length} types</div>
-                          <button type="button" data-tutorial="sku-add-type" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows)} className="mt-2 inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] font-black text-zinc-700 hover:border-black">
-                            <Plus className="size-3" /> Type
-                          </button>
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            <button type="button" data-tutorial="sku-add-type" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows)} className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] font-black text-zinc-700 hover:border-black">
+                              <Plus className="size-3" /> Type
+                            </button>
+                            <button type="button" onClick={() => firstRow && openEdit(firstRow)} className="inline-flex h-7 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2 text-[11px] font-black text-zinc-700 hover:border-black">
+                              <Pencil className="size-3" /> Edit
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -910,9 +915,12 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                           </div>
                           <div className="text-sm font-black tabular-nums text-zinc-900">{formatPrice(firstRow?.price ?? 0)}</div>
                           <div className="grid gap-1 text-sm font-black"><StockStat quantity={totalStock} lowStock={totalLowStock} /></div>
-                          <div className="flex justify-end">
+                          <div className="flex justify-end gap-1.5">
                             <button type="button" data-tutorial="sku-add-type" onClick={() => firstRow && openAppendVariation(firstRow, entry.rows)} className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 text-xs font-black text-zinc-700 hover:border-black">
                               <Plus className="size-3.5" /> Type
+                            </button>
+                            <button type="button" onClick={() => firstRow && openEdit(firstRow)} className="inline-flex h-8 items-center gap-1 rounded-md border border-zinc-200 bg-white px-2.5 text-xs font-black text-zinc-700 hover:border-black">
+                              <Pencil className="size-3.5" /> Edit
                             </button>
                           </div>
                         </div>
@@ -922,10 +930,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                             <div className="min-w-0 break-words font-semibold leading-tight text-zinc-600"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Type</span>{row.variant ?? "-"}</div>
                             <div className="font-bold tabular-nums"><span className="mr-1 text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Price</span>{formatPrice(row.price)}</div>
                             <div className="grid gap-1"><span className="text-[10px] font-black uppercase tracking-[0.12em] text-zinc-400 xl:hidden">Stock</span><StockStat quantity={row.quantity} lowStock={row.low_stock_qty} /></div>
-                            <div className="flex flex-wrap gap-1.5 sm:col-span-2 xl:col-span-1 xl:justify-end">
-                              <Button type="button" variant="outline" size="sm" className="xl:h-8 xl:px-2.5 xl:text-xs" onClick={() => openAppendVariation(row, entry.rows)}><Plus className="size-3.5" />Type</Button>
-                              <Button type="button" variant="outline" size="sm" className="xl:h-8 xl:px-2.5 xl:text-xs" onClick={() => openEdit(row)}><Pencil className="size-3.5" />Edit</Button>
-                            </div>
+                            <div className="hidden xl:block" aria-hidden="true" />
                           </div>
                         ))}
                       </div>
