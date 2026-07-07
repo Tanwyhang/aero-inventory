@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { BookOpen, Monitor, ShieldCheck } from "lucide-react";
+import { BookOpen, Download, Monitor, ShieldCheck } from "lucide-react";
 
 import { AppSidebar } from "@/components/app-sidebar";
 import { Button } from "@/components/ui/button";
@@ -16,6 +16,44 @@ export function TutorialPage({ membership }: { membership: Membership }) {
   const lessons = useMemo(() => getVisibleLessons(membership.role), [membership.role]);
   const selectedLesson = lessons.find((lesson) => lesson.id === lessonId) ?? lessons[0];
   const frameSrc = `/tutorial/embed?lesson=${selectedLesson.id}&role=${membership.role}`;
+
+  function downloadSelectedLesson() {
+    const lessonUrl = new URL(frameSrc, window.location.origin).toString();
+    const lessonSlug = selectedLesson.label.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const html = `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Aero Tutorial - ${selectedLesson.label}</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #09090b; color: #fff; font-family: Arial, sans-serif; }
+    body { display: grid; grid-template-rows: auto 1fr; }
+    header { display: flex; justify-content: space-between; gap: 12px; align-items: center; padding: 16px 20px; background: #111827; }
+    h1 { margin: 0; font-size: 18px; }
+    p { margin: 4px 0 0; font-size: 13px; color: #a1a1aa; }
+    a { color: #bef264; }
+    iframe { width: 100%; height: 100%; border: 0; background: #fff; }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>${selectedLesson.label}</h1>
+      <p>If the embedded tutorial does not load, open it directly: <a href="${lessonUrl}">${lessonUrl}</a></p>
+    </div>
+  </header>
+  <iframe src="${lessonUrl}" title="${selectedLesson.label} tutorial"></iframe>
+</body>
+</html>`;
+    const blob = new Blob([html], { type: "text/html" });
+    const url = window.URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `aero-tutorial-${lessonSlug}.html`;
+    anchor.click();
+    window.URL.revokeObjectURL(url);
+  }
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
@@ -32,9 +70,14 @@ export function TutorialPage({ membership }: { membership: Membership }) {
               <h1 className="mt-5 text-3xl font-black tracking-[-0.055em] sm:text-[48px]">Tutorial</h1>
               <p className="mt-2 max-w-2xl text-sm font-semibold text-zinc-500 sm:text-base">Guided, visual walkthroughs for every tab. The embedded frame renders the real Aero UI with demo data, then a fake cursor teaches each step.</p>
             </div>
-            <div className="grid gap-2 rounded-3xl border border-zinc-200 bg-white p-2 shadow-sm sm:grid-cols-2 xl:w-[300px]">
+            <div className="grid gap-2 rounded-3xl border border-zinc-200 bg-white p-2 shadow-sm xl:w-[320px]">
+              <Button type="button" variant="outline" onClick={downloadSelectedLesson} className="h-11 rounded-2xl bg-white font-black hover:bg-white">
+                <Download className="size-4" />Download Tutorial
+              </Button>
+              <div className="grid gap-2 sm:grid-cols-2">
               <Button type="button" variant={frameSize === "desktop" ? "default" : "outline"} onClick={() => setFrameSize("desktop")} className={cn("h-11 rounded-2xl font-black", frameSize === "desktop" ? "bg-black text-lime hover:bg-black" : "bg-white hover:bg-white")}>Desktop</Button>
               <Button type="button" variant={frameSize === "mobile" ? "default" : "outline"} onClick={() => setFrameSize("mobile")} className={cn("h-11 rounded-2xl font-black", frameSize === "mobile" ? "bg-black text-lime hover:bg-black" : "bg-white hover:bg-white")}>Mobile</Button>
+              </div>
             </div>
           </header>
 

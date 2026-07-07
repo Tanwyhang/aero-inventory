@@ -185,6 +185,7 @@ export type Database = {
           location_id: string;
           source_shop_name: string;
           share_date: string;
+          auto_sync_with_main_store: boolean;
           status: PartnerShareStatus;
           created_by: string | null;
           updated_by: string | null;
@@ -354,6 +355,10 @@ export type Database = {
       };
       admin_update_partner_share_status: {
         Args: { p_sheet_id: string; p_status: PartnerShareStatus };
+        Returns: string;
+      };
+      admin_set_partner_share_auto_sync: {
+        Args: { p_sheet_id: string; p_auto_sync_with_main_store: boolean };
         Returns: string;
       };
       admin_deduct_partner_share_stock: {
@@ -527,6 +532,7 @@ export type PartnerShareSheetSummary = {
   location_name: string;
   source_shop_name: string;
   share_date: string;
+  auto_sync_with_main_store: boolean;
   status: PartnerShareStatus;
   item_count: number;
   total_share_qty: number;

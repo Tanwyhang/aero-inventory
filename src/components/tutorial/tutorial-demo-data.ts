@@ -251,6 +251,7 @@ export const demoPartnerSharePageData: PartnerSharePageData = {
       location_name: "Main Shelf",
       source_shop_name: "Aero Training Store",
       share_date: new Date().toISOString().slice(0, 10),
+      auto_sync_with_main_store: false,
       status: "draft",
       item_count: 2,
       total_share_qty: 8,

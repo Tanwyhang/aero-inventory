@@ -40,6 +40,11 @@ const statusSchema = z.object({
   status: z.enum(["draft", "confirmed", "sent", "completed"]),
 });
 
+const autoSyncSchema = z.object({
+  sheetId: z.string().uuid(),
+  autoSyncWithMainStore: z.boolean(),
+});
+
 const outputSchema = z.object({
   sheetId: z.string().uuid(),
   outputType: z.enum(["whatsapp_copy", "excel_export"]),
@@ -241,6 +246,29 @@ export async function updatePartnerShareStatusAction(input: { sheetId: string; s
   const { error } = await supabase.rpc("admin_update_partner_share_status", {
     p_sheet_id: parsed.data.sheetId,
     p_status: parsed.data.status,
+  });
+
+  if (error) return { ok: false, error: error.message };
+  revalidatePartnerShare();
+  return { ok: true };
+}
+
+export async function updatePartnerShareAutoSyncAction(input: z.input<typeof autoSyncSchema>) {
+  const membership = await requireMembership();
+  const adminError = requireAdmin(membership.role);
+  if (adminError) return adminError;
+
+  const parsed = autoSyncSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Choose a valid auto-sync setting." };
+
+  const supabase = await createClient();
+  if (!(await existsInSelectedWorkspace("partner_share_sheets", parsed.data.sheetId, membership.organization_id))) {
+    return { ok: false, error: "Partner share sheet is not available in the selected workspace." };
+  }
+
+  const { error } = await supabase.rpc("admin_set_partner_share_auto_sync", {
+    p_sheet_id: parsed.data.sheetId,
+    p_auto_sync_with_main_store: parsed.data.autoSyncWithMainStore,
   });
 
   if (error) return { ok: false, error: error.message };
