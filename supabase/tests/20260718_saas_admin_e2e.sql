@@ -17,13 +17,15 @@ values
   ('10000000-0000-4000-8000-000000000004', 'authenticated', 'authenticated', 'aero-e2e-outsider@example.invalid', '{"provider":"google","providers":["google"]}', '{"full_name":"Aero E2E Outsider"}', now(), now(), now(), false, false),
   ('10000000-0000-4000-8000-000000000005', 'authenticated', 'authenticated', 'aero-e2e-super@example.invalid', '{"provider":"google","providers":["google"]}', '{"full_name":"Aero E2E Super Admin"}', now(), now(), now(), false, false);
 
-insert into auth.identities (provider_id, user_id, identity_data, provider, email, created_at, updated_at)
+-- `auth.identities.email` is generated from identity_data on current hosted
+-- Supabase projects, so it must not be inserted explicitly.
+insert into auth.identities (provider_id, user_id, identity_data, provider, created_at, updated_at)
 values
-  ('aero-e2e-admin@example.invalid', '10000000-0000-4000-8000-000000000001', '{"sub":"10000000-0000-4000-8000-000000000001","email":"aero-e2e-admin@example.invalid","email_verified":true}', 'google', 'aero-e2e-admin@example.invalid', now(), now()),
-  ('aero-e2e-staff@example.invalid', '10000000-0000-4000-8000-000000000002', '{"sub":"10000000-0000-4000-8000-000000000002","email":"aero-e2e-staff@example.invalid","email_verified":true}', 'google', 'aero-e2e-staff@example.invalid', now(), now()),
-  ('aero-e2e-viewer@example.invalid', '10000000-0000-4000-8000-000000000003', '{"sub":"10000000-0000-4000-8000-000000000003","email":"aero-e2e-viewer@example.invalid","email_verified":true}', 'google', 'aero-e2e-viewer@example.invalid', now(), now()),
-  ('aero-e2e-outsider@example.invalid', '10000000-0000-4000-8000-000000000004', '{"sub":"10000000-0000-4000-8000-000000000004","email":"aero-e2e-outsider@example.invalid","email_verified":true}', 'google', 'aero-e2e-outsider@example.invalid', now(), now()),
-  ('aero-e2e-super@example.invalid', '10000000-0000-4000-8000-000000000005', '{"sub":"10000000-0000-4000-8000-000000000005","email":"aero-e2e-super@example.invalid","email_verified":true}', 'google', 'aero-e2e-super@example.invalid', now(), now());
+  ('aero-e2e-admin@example.invalid', '10000000-0000-4000-8000-000000000001', '{"sub":"10000000-0000-4000-8000-000000000001","email":"aero-e2e-admin@example.invalid","email_verified":true}', 'google', now(), now()),
+  ('aero-e2e-staff@example.invalid', '10000000-0000-4000-8000-000000000002', '{"sub":"10000000-0000-4000-8000-000000000002","email":"aero-e2e-staff@example.invalid","email_verified":true}', 'google', now(), now()),
+  ('aero-e2e-viewer@example.invalid', '10000000-0000-4000-8000-000000000003', '{"sub":"10000000-0000-4000-8000-000000000003","email":"aero-e2e-viewer@example.invalid","email_verified":true}', 'google', now(), now()),
+  ('aero-e2e-outsider@example.invalid', '10000000-0000-4000-8000-000000000004', '{"sub":"10000000-0000-4000-8000-000000000004","email":"aero-e2e-outsider@example.invalid","email_verified":true}', 'google', now(), now()),
+  ('aero-e2e-super@example.invalid', '10000000-0000-4000-8000-000000000005', '{"sub":"10000000-0000-4000-8000-000000000005","email":"aero-e2e-super@example.invalid","email_verified":true}', 'google', now(), now());
 
 insert into public.profiles (id, email, full_name)
 values
