@@ -5,7 +5,7 @@ import { ReportsAreaChart, type ReportsAreaDatum } from "@/components/reports-ar
 import { requireMembership } from "@/lib/auth";
 import { withSignedSkuPhotoUrls } from "@/lib/sku-photos";
 import { createClient } from "@/lib/supabase/server";
-import type { AdminInventoryRow, RestockRequestRow, StockAdjustmentReason } from "@/types/database";
+import type { AdminInventoryRow, RestockRequestRow, StockAdjustmentReason, WorkspaceMemberRow } from "@/types/database";
 
 type MovementRow = {
   id: string;
@@ -84,7 +84,12 @@ export default async function ReportsPage() {
   }
 
   const supabase = await createClient();
-  const [{ data: movements }, { data: auditEvents }, { data: restockRequests }, { data: adminRows, error: adminRowsError }] = await Promise.all([
+  const [
+    { data: movements, error: movementsError },
+    { data: auditEvents, error: auditEventsError },
+    { data: restockRequests, error: restockError },
+    { data: adminRows, error: adminRowsError },
+  ] = await Promise.all([
     supabase
       .from("stock_movements")
       .select("id, sku_id, location_id, actor_user_id, movement_type, quantity_delta, quantity_before, quantity_after, reason, note, created_at")
@@ -101,8 +106,19 @@ export default async function ReportsPage() {
     supabase.rpc("get_admin_inventory_overview", { p_organization_id: membership.organization_id }),
   ]);
 
-  if (adminRowsError) {
-    throw new Error(adminRowsError.message);
+  if (movementsError || auditEventsError || restockError || adminRowsError) {
+    console.error("Reports data failed to load", {
+      workspaceId: membership.organization_id,
+      movementsCode: movementsError?.code ?? null,
+      auditCode: auditEventsError?.code ?? null,
+      restockCode: restockError?.code ?? null,
+      inventoryCode: adminRowsError?.code ?? null,
+      movementsMessage: movementsError?.message ?? null,
+      auditMessage: auditEventsError?.message ?? null,
+      restockMessage: restockError?.message ?? null,
+      inventoryMessage: adminRowsError?.message ?? null,
+    });
+    throw new Error("Unable to load reports.");
   }
 
   const restockRows = (restockRequests ?? []) as RestockRequestRow[];
@@ -110,21 +126,35 @@ export default async function ReportsPage() {
   const auditRows = (auditEvents ?? []) as AuditEventRow[];
   const actorIds = uniqueStrings([...movementRows.map((movement) => movement.actor_user_id), ...auditRows.map((event) => event.actor_user_id)]);
   const locationIds = uniqueStrings(movementRows.map((movement) => movement.location_id));
-  const [{ data: actorProfiles }, { data: actorMemberships }, { data: locations }] = await Promise.all([
-    actorIds.length > 0 ? supabase.from("profiles").select("id, full_name, email").in("id", actorIds) : Promise.resolve({ data: [], error: null }),
-    actorIds.length > 0 ? supabase.from("organization_members").select("user_id, role").eq("organization_id", membership.organization_id).in("user_id", actorIds) : Promise.resolve({ data: [], error: null }),
+  const [
+    { data: workspaceMembers, error: workspaceMembersError },
+    { data: locations, error: locationsError },
+  ] = await Promise.all([
+    actorIds.length > 0
+      ? supabase.rpc("admin_list_workspace_members", { p_organization_id: membership.organization_id })
+      : Promise.resolve({ data: [], error: null }),
     locationIds.length > 0 ? supabase.from("locations").select("id, name").eq("organization_id", membership.organization_id).in("id", locationIds) : Promise.resolve({ data: [], error: null }),
   ]);
-  const actorProfileById = new Map((actorProfiles ?? []).map((profile) => [profile.id, profile]));
-  const actorRoleById = new Map((actorMemberships ?? []).map((actor) => [actor.user_id, memberRole(actor.role)]));
+
+  if (workspaceMembersError || locationsError) {
+    console.error("Reports reference data failed to load", {
+      workspaceId: membership.organization_id,
+      membersCode: workspaceMembersError?.code ?? null,
+      locationsCode: locationsError?.code ?? null,
+      membersMessage: workspaceMembersError?.message ?? null,
+      locationsMessage: locationsError?.message ?? null,
+    });
+    throw new Error("Unable to load report details.");
+  }
+  const actorById = new Map(((workspaceMembers ?? []) as WorkspaceMemberRow[]).map((actor) => [actor.user_id, actor]));
   const locationById = new Map((locations ?? []).map((location) => [location.id, location]));
   const movementChartData = getMovementChartData(movementRows);
   const inventoryRows = await withSignedSkuPhotoUrls((adminRows ?? []) as AdminInventoryRow[]);
   const inventoryBySku = new Map(inventoryRows.map((row) => [row.sku_id, row]));
   const reportMovements: ReportMovement[] = movementRows.slice(0, 20).map((movement) => {
     const row = inventoryBySku.get(movement.sku_id);
-    const actorProfile = actorProfileById.get(movement.actor_user_id);
-    const actorName = actorProfile?.full_name || actorProfile?.email || "Unknown user";
+    const actor = actorById.get(movement.actor_user_id);
+    const actorName = actor?.full_name || actor?.email || "Unknown user";
 
     return {
       id: movement.id,
@@ -139,7 +169,7 @@ export default async function ReportsPage() {
       reason: movement.reason ?? "Stock Adjustment",
       locationId: movement.location_id,
       locationName: locationById.get(movement.location_id)?.name ?? row?.location_name ?? "Unknown warehouse",
-      actorRole: actorRoleById.get(movement.actor_user_id) ?? null,
+      actorRole: memberRole(actor?.role),
       actorName,
       note: movement.note,
       createdAt: movement.created_at,
@@ -164,7 +194,7 @@ export default async function ReportsPage() {
     };
   });
   const reportAudits: ReportAudit[] = auditRows.map((event) => {
-    const actorProfile = event.actor_user_id ? actorProfileById.get(event.actor_user_id) : null;
+    const actor = event.actor_user_id ? actorById.get(event.actor_user_id) : null;
 
     return {
       id: event.id,
@@ -172,8 +202,8 @@ export default async function ReportsPage() {
       eventType: event.event_type,
       entityType: event.entity_type,
       entityLabel: event.entity_label,
-      actorRole: memberRole(event.actor_role) ?? (event.actor_user_id ? actorRoleById.get(event.actor_user_id) ?? null : null),
-      actorName: actorProfile?.full_name || actorProfile?.email || null,
+      actorRole: memberRole(event.actor_role) ?? memberRole(actor?.role),
+      actorName: actor?.full_name || actor?.email || null,
       createdAt: event.created_at,
       beforeData: event.before_data,
       afterData: event.after_data,
@@ -184,7 +214,7 @@ export default async function ReportsPage() {
   return (
     <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
-        <AppSidebar active="reports" role="admin" restockCount={restockRows.length} />
+        <AppSidebar active="reports" role="admin" workspaceName={membership.organization_name} restockCount={restockRows.length} />
         <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <h1 className="text-2xl font-black tracking-[-0.055em] sm:text-[44px]">Reports</h1>
           <p className="mt-1.5 text-sm font-semibold text-zinc-500 sm:text-base">Operational stock, restock, and audit trail.</p>

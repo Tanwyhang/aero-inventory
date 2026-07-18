@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 
 import { GlobalLoadingIndicator } from "@/components/global-loading-indicator";
+import { LanguageSwitcher, LocaleProvider } from "@/components/locale-provider";
 import { Toaster } from "@/components/ui/toast";
+import { AERO_LOCALE_COOKIE, normalizeLocale } from "@/lib/i18n";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -31,17 +34,22 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  const locale = normalizeLocale((await cookies()).get(AERO_LOCALE_COOKIE)?.value);
+
   return (
-    <html lang="en">
+    <html lang={locale === "zh" ? "zh-CN" : locale}>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <GlobalLoadingIndicator />
-        {children}
-        <Toaster />
+        <LocaleProvider initialLocale={locale}>
+          <GlobalLoadingIndicator />
+          <LanguageSwitcher />
+          {children}
+          <Toaster />
+        </LocaleProvider>
       </body>
     </html>
   );

@@ -34,23 +34,16 @@ export function GlobalLoadingIndicator() {
       showLoading();
     }
 
-    function handleSubmit(event: SubmitEvent) {
-      if (event.defaultPrevented) return;
-      showLoading();
-    }
-
     function hideLoading() {
       setIsLoading(false);
     }
 
     document.addEventListener("click", handleClick, true);
-    document.addEventListener("submit", handleSubmit, true);
     window.addEventListener("pageshow", hideLoading);
 
     return () => {
       if (timeoutId) window.clearTimeout(timeoutId);
       document.removeEventListener("click", handleClick, true);
-      document.removeEventListener("submit", handleSubmit, true);
       window.removeEventListener("pageshow", hideLoading);
     };
   }, []);

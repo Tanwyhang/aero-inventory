@@ -9,8 +9,6 @@ import {
   ArrowUpDown,
   Check,
   ChevronDown,
-  ChevronLeft,
-  ChevronRight,
   Menu,
   Minus,
   Package,
@@ -37,7 +35,7 @@ import { toast } from "@/components/ui/toast";
 import { WhatsAppLink } from "@/components/whatsapp-link";
 import { DEFAULT_STOCK_ADJUSTMENT_REASON, STOCK_ADJUSTMENT_REASONS, type StockAdjustmentReason } from "@/lib/stock-reasons";
 import { cn } from "@/lib/utils";
-import type { AdminInventoryRow, Membership, RestockRequestRow, RestockStatus, StaffInventoryRow } from "@/types/database";
+import type { AdminInventoryRow, MemberRole, Membership, RestockRequestRow, RestockStatus, StaffInventoryRow } from "@/types/database";
 
 type InventoryRow = StaffInventoryRow | AdminInventoryRow;
 type StockMovementMode = "absolute" | "relative";
@@ -64,6 +62,12 @@ const STAFF_VIEW_STORAGE_KEY = "aero:view-as-staff";
 
 function isAdminRow(row: InventoryRow): row is AdminInventoryRow {
   return "supplier_name" in row;
+}
+
+function roleViewLabel(role: MemberRole) {
+  if (role === "admin") return "Admin view";
+  if (role === "viewer") return "Viewer · read-only";
+  return "Staff-safe view";
 }
 
 export function ProductThumb({ label, photoUrl, eager = false }: { label: string; photoUrl?: string | null; eager?: boolean }) {
@@ -290,35 +294,43 @@ function AdjustmentDialog({
     }
 
     setIsPending(true);
-    const result = await adjustStockAction({
-      skuId: row.sku_id,
-      locationId: row.location_id,
-      movement: signedQuantity,
-      reason,
-      note: stockNote,
-    });
+    try {
+      const result = await adjustStockAction({
+        skuId: row.sku_id,
+        locationId: row.location_id,
+        movement: signedQuantity,
+        expectedQuantity: mode === "absolute" ? row.quantity : undefined,
+        reason,
+        note: stockNote,
+      });
 
-    setIsPending(false);
+      if (!result.ok) {
+        const message = "Stock could not be updated. Refresh and try again.";
+        setError(message);
+        toast.error("Stock update failed", { description: message });
+        return;
+      }
 
-    if (!result.ok) {
-      const message = result.error ?? "Stock update failed.";
+      toast.success("Stock movement recorded", {
+        description: `${row.product_name}: ${adjustmentLabel} (${reason})`,
+      });
+      onClose();
+      router.refresh();
+    } catch (submitError) {
+      console.error("Stock adjustment request failed", submitError);
+      const message = "Stock could not be updated. Check your connection and try again.";
       setError(message);
       toast.error("Stock update failed", { description: message });
-      return;
+    } finally {
+      setIsPending(false);
     }
-
-    toast.success("Stock movement recorded", {
-      description: `${row.product_name}: ${adjustmentLabel} (${reason})`,
-    });
-    onClose();
-    router.refresh();
   }
 
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={onClose}>
+    <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={() => !isPending && onClose()}>
       <div className="w-full max-w-[22rem] sm:max-w-lg" onClick={(event) => event.stopPropagation()}>
         <FluidEntrySurface data-tutorial="stock-modal" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
-          <form onSubmit={handleSubmit}>
+          <form onSubmit={handleSubmit} aria-busy={isPending}>
           <div className="flex items-start justify-between gap-4">
             <div>
                <h2 className="text-xl font-black tracking-[-0.05em] sm:text-2xl">
@@ -326,7 +338,7 @@ function AdjustmentDialog({
               </h2>
               <p className="mt-1 text-sm font-semibold text-zinc-500">{row.product_name} · {row.sku_code}</p>
             </div>
-             <button type="button" onClick={onClose} className="grid size-9 place-items-center rounded-lg border border-border sm:size-10" aria-label="Close stock movement">
+             <button type="button" onClick={onClose} disabled={isPending} className="grid size-9 place-items-center rounded-lg border border-border disabled:opacity-50 sm:size-10" aria-label="Close stock movement">
                <X className="size-4 sm:size-5" />
             </button>
           </div>
@@ -400,7 +412,7 @@ function AdjustmentDialog({
           </div>
 
            <div className="mt-5 flex flex-col-reverse gap-2 sm:mt-6 sm:flex-row sm:justify-end sm:gap-3">
-             <Button type="button" variant="outline" onClick={onClose} className="h-11 rounded-lg bg-white px-5 text-sm font-bold hover:bg-white sm:h-12 sm:px-6 sm:text-base">Cancel</Button>
+             <Button type="button" variant="outline" onClick={onClose} disabled={isPending} className="h-11 rounded-lg bg-white px-5 text-sm font-bold hover:bg-white sm:h-12 sm:px-6 sm:text-base">Cancel</Button>
                <Button type="submit" data-tutorial="stock-modal-confirm" disabled={isPending} className="h-11 rounded-lg bg-lime px-5 text-sm font-bold text-black hover:bg-lime disabled:opacity-60 sm:h-12 sm:px-6 sm:text-base">
                 {isPending ? <LumaSpinner label="Saving movement" /> : null}
                 {isPending ? "Saving..." : "Confirm Adjustment"}
@@ -433,27 +445,28 @@ function PingDialog({ row, onClose }: { row: InventoryRow; onClose: () => void }
   async function confirmRestockRequest() {
     setConfirmError(null);
     setIsPending(true);
-    const result = await createRestockRequestAction({
-      skuId: row.sku_id,
-      locationId: row.location_id,
-      requestedQty,
-      note,
-    });
+    try {
+      const result = await createRestockRequestAction({
+        skuId: row.sku_id,
+        locationId: row.location_id,
+        requestedQty,
+        note,
+      });
+      if (!result.ok) throw new Error("The restock request could not be saved. Refresh and try again.");
 
-    setIsPending(false);
-
-    if (!result.ok) {
-      const message = result.error ?? "Request failed.";
+      toast.success("Restock request recorded", {
+        description: `${row.product_name}: need ${requestedQty || "restock"}`,
+      });
+      onClose();
+      router.refresh();
+    } catch (requestError) {
+      const message = requestError instanceof Error ? requestError.message : "Request failed. Check your connection and try again.";
       setConfirmError(message);
       toast.error("Restock request failed", { description: message });
       throw new Error(message);
+    } finally {
+      setIsPending(false);
     }
-
-    toast.success("Restock request recorded", {
-      description: `${row.product_name}: need ${requestedQty || "restock"}`,
-    });
-    onClose();
-    router.refresh();
   }
 
   return (
@@ -520,19 +533,21 @@ export function RestockQueue({ requests, rows }: { requests: RestockRequestRow[]
 
   async function updateStatus(requestId: string, status: RestockStatus) {
     setPendingId(requestId);
-    const result = await updateRestockStatusAction({ requestId, status });
-    setPendingId(null);
+    try {
+      const result = await updateRestockStatusAction({ requestId, status });
+      if (!result.ok) throw new Error("The restock status could not be updated. Refresh and try again.");
 
-    if (!result.ok) {
-      const message = result.error ?? "Status update failed.";
+      toast.success("Restock status recorded", { description: `Request marked ${status}.` });
+      setConfirmation(null);
+      router.refresh();
+    } catch (statusError) {
+      const message = statusError instanceof Error ? statusError.message : "Status update failed. Check your connection and try again.";
       setConfirmError(message);
       toast.error("Status update failed", { description: message });
       throw new Error(message);
+    } finally {
+      setPendingId(null);
     }
-
-    toast.success("Restock status recorded", { description: `Request marked ${status}.` });
-    setConfirmation(null);
-    router.refresh();
   }
 
   function nextAction(status: RestockStatus) {
@@ -651,7 +666,7 @@ function StockRowCard({
 }: {
   row: InventoryRow;
   index: number;
-  effectiveRole: "admin" | "staff";
+  effectiveRole: MemberRole;
   nested?: boolean;
   onAdjust: (target: StockAdjustmentTarget) => void;
   onPing: (row: InventoryRow) => void;
@@ -698,20 +713,29 @@ function StockRowCard({
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white ring-1 ring-border">
             <div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: stockColor(row.quantity, row.low_stock_qty) }} />
           </div>
-          <div className="mt-1.5 grid grid-cols-2 gap-1.5">
-            <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-8 rounded-md border-lime bg-white text-xs font-black hover:bg-white" onClick={() => onAdjust({ row, direction: "deduct" })}>
-              <Minus className="size-4" />
-              Deduct
-            </Button>
-            <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-8 rounded-md bg-lime text-xs font-black text-black hover:bg-lime" onClick={() => onAdjust({ row, direction: "add" })}>
-              <Plus className="size-4" />
-              Add
-            </Button>
-          </div>
+          {effectiveRole === "viewer" ? (
+            <div className="mt-1.5 rounded-md bg-white py-2 text-center text-xs font-black text-zinc-500">View only</div>
+          ) : (
+            <div className="mt-1.5 grid grid-cols-2 gap-1.5">
+              <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-8 rounded-md border-lime bg-white text-xs font-black hover:bg-white" onClick={() => onAdjust({ row, direction: "deduct" })}>
+                <Minus className="size-4" />
+                Deduct
+              </Button>
+              <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-8 rounded-md bg-lime text-xs font-black text-black hover:bg-lime" onClick={() => onAdjust({ row, direction: "add" })}>
+                <Plus className="size-4" />
+                Add
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="mt-1.5 rounded-md border border-border bg-white p-1.5">
-          {effectiveRole === "admin" && isAdminRow(row) ? (
+          {effectiveRole === "viewer" ? (
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-500">View only</div>
+              <div className="mt-1 text-xs font-semibold text-zinc-500">Stock changes and requests are disabled.</div>
+            </div>
+          ) : effectiveRole === "admin" && isAdminRow(row) ? (
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <div className="truncate text-sm font-black tracking-[-0.035em]">{row.supplier_name ?? "No supplier"}</div>
@@ -758,18 +782,27 @@ function StockRowCard({
           <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-white ring-1 ring-border">
             <div className="h-full rounded-full" style={{ width: `${percentage}%`, backgroundColor: stockColor(row.quantity, row.low_stock_qty) }} />
           </div>
-          <div className="mt-2 grid grid-cols-2 gap-1.5">
-            <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-10 rounded-md border-lime bg-white text-sm font-black hover:bg-white xl:h-6" onClick={() => onAdjust({ row, direction: "deduct" })}>
-              <Minus className="size-4" />
-            </Button>
-            <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-10 rounded-md bg-lime text-sm font-black text-black hover:bg-lime xl:h-6" onClick={() => onAdjust({ row, direction: "add" })}>
-              <Plus className="size-4" />
-            </Button>
-          </div>
+          {effectiveRole === "viewer" ? (
+            <div className="mt-2 rounded-md bg-white py-1 text-center text-[10px] font-black text-zinc-500">View only</div>
+          ) : (
+            <div className="mt-2 grid grid-cols-2 gap-1.5">
+              <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-10 rounded-md border-lime bg-white text-sm font-black hover:bg-white xl:h-6" onClick={() => onAdjust({ row, direction: "deduct" })}>
+                <Minus className="size-4" />
+              </Button>
+              <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-10 rounded-md bg-lime text-sm font-black text-black hover:bg-lime xl:h-6" onClick={() => onAdjust({ row, direction: "add" })}>
+                <Plus className="size-4" />
+              </Button>
+            </div>
+          )}
         </div>
 
         <div className="col-span-2 mx-1.5 mb-1.5 rounded-md border border-border bg-white p-1.5 xl:col-span-1 xl:m-1 xl:ml-0 xl:bg-zinc-50">
-          {effectiveRole === "admin" && isAdminRow(row) ? (
+          {effectiveRole === "viewer" ? (
+            <div>
+              <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-500">View only</div>
+              <div className="mt-2 text-sm font-bold text-zinc-500">Stock changes and requests are disabled.</div>
+            </div>
+          ) : effectiveRole === "admin" && isAdminRow(row) ? (
             <>
               <div className="break-words text-sm font-black leading-tight tracking-[-0.04em]">{row.supplier_name ?? "No supplier"}</div>
               <div className="text-[10px] font-bold text-zinc-500">{row.phone_raw ?? "No phone number"}</div>
@@ -804,7 +837,7 @@ function StockGroupCard({
 }: {
   entry: StockGroupEntry;
   index: number;
-  effectiveRole: "admin" | "staff";
+  effectiveRole: MemberRole;
   onAdjust: (target: StockAdjustmentTarget) => void;
   onPing: (row: InventoryRow) => void;
 }) {
@@ -932,20 +965,26 @@ function StockGroupCard({
                 </div>
 
                 <div className="grid grid-cols-2 gap-2 lg:grid-cols-[34px_34px_minmax(0,1fr)] lg:gap-1.5 lg:justify-end">
-                  <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-10 rounded-lg border-border bg-white px-0 text-sm font-black hover:bg-white lg:h-8 lg:rounded-md" onClick={() => onAdjust({ row, direction: "deduct" })}>
-                    <Minus className="size-4" />
-                  </Button>
-                  <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-10 rounded-lg bg-lime px-0 text-sm font-black text-black hover:bg-lime lg:h-8 lg:rounded-md" onClick={() => onAdjust({ row, direction: "add" })}>
-                    <Plus className="size-4" />
-                  </Button>
-                  {effectiveRole === "admin" && isAdminRow(row) ? (
-                    row.whatsapp_number ? (
-                      <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} label="WhatsApp" className="col-span-2 h-10 rounded-lg bg-[#25D366] px-3 text-xs font-black text-white hover:bg-[#25D366] lg:col-span-1 lg:h-8 lg:rounded-md lg:px-2 lg:text-[11px]" />
-                    ) : (
-                      <Button type="button" disabled className="col-span-2 h-10 rounded-lg bg-zinc-200 px-3 text-xs font-black text-zinc-500 lg:col-span-1 lg:h-8 lg:rounded-md lg:px-2 lg:text-[11px]">No Contact</Button>
-                    )
+                  {effectiveRole === "viewer" ? (
+                    <div className="col-span-2 grid h-10 place-items-center rounded-lg bg-zinc-100 text-xs font-black text-zinc-500 lg:col-span-3 lg:h-8">View only</div>
                   ) : (
-                    <Button type="button" variant="outline" className="col-span-2 h-10 rounded-lg bg-white px-3 text-xs font-black hover:bg-white lg:col-span-1 lg:h-8 lg:rounded-md lg:px-2 lg:text-[11px]" onClick={() => onPing(row)}>Ping</Button>
+                    <>
+                      <Button type="button" variant="outline" aria-label={`Deduct stock for ${row.product_name}`} className="h-10 rounded-lg border-border bg-white px-0 text-sm font-black hover:bg-white lg:h-8 lg:rounded-md" onClick={() => onAdjust({ row, direction: "deduct" })}>
+                        <Minus className="size-4" />
+                      </Button>
+                      <Button type="button" aria-label={`Add stock for ${row.product_name}`} className="h-10 rounded-lg bg-lime px-0 text-sm font-black text-black hover:bg-lime lg:h-8 lg:rounded-md" onClick={() => onAdjust({ row, direction: "add" })}>
+                        <Plus className="size-4" />
+                      </Button>
+                      {effectiveRole === "admin" && isAdminRow(row) ? (
+                        row.whatsapp_number ? (
+                          <WhatsAppLink phone={row.whatsapp_number} product={row.product_name} supplier={row.supplier_name ?? undefined} label="WhatsApp" className="col-span-2 h-10 rounded-lg bg-[#25D366] px-3 text-xs font-black text-white hover:bg-[#25D366] lg:col-span-1 lg:h-8 lg:rounded-md lg:px-2 lg:text-[11px]" />
+                        ) : (
+                          <Button type="button" disabled className="col-span-2 h-10 rounded-lg bg-zinc-200 px-3 text-xs font-black text-zinc-500 lg:col-span-1 lg:h-8 lg:rounded-md lg:px-2 lg:text-[11px]">No Contact</Button>
+                        )
+                      ) : (
+                        <Button type="button" variant="outline" className="col-span-2 h-10 rounded-lg bg-white px-3 text-xs font-black hover:bg-white lg:col-span-1 lg:h-8 lg:rounded-md lg:px-2 lg:text-[11px]" onClick={() => onPing(row)}>Ping</Button>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -1005,7 +1044,7 @@ export function InventoryDashboard({
   return (
     <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
-        <AppSidebar active="stock" role={effectiveRole} restockCount={restockRequests.length} showStaffToggle={isAdmin} isViewingAsStaff={viewAsStaff} onToggleStaffView={toggleStaffView} />
+        <AppSidebar active="stock" role={effectiveRole} workspaceName={membership.organization_name} restockCount={restockRequests.length} showStaffToggle={isAdmin} isViewingAsStaff={viewAsStaff} onToggleStaffView={toggleStaffView} />
 
         <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <header className="flex items-start justify-between gap-4">
@@ -1013,7 +1052,7 @@ export function InventoryDashboard({
               <StoreIdentityEditor initialName={membership.organization_name} initialIcon={membership.organization_icon} workspaceId={membership.organization_id} readOnly={effectiveRole !== "admin"} />
               <div data-tutorial="role-badge" className="mt-3 hidden items-center gap-2 rounded-full bg-zinc-100 px-4 py-2 text-sm font-bold text-zinc-600 sm:inline-flex">
                 <ShieldCheck className="size-4" />
-                {effectiveRole === "admin" ? "Admin view" : "Staff-safe view"}
+                {roleViewLabel(effectiveRole)}
               </div>
             </div>
 
@@ -1050,7 +1089,7 @@ export function InventoryDashboard({
             <div className="grid gap-3 xl:grid-cols-[1fr_auto_auto] xl:items-center">
               <label className="flex h-12 items-center gap-3 rounded-xl border border-border bg-zinc-50 px-3 sm:h-14 sm:gap-4 sm:px-4">
                 <Search className="size-5 shrink-0" />
-                <input data-tutorial="stock-search" value={query} onChange={(event) => setQuery(event.target.value)} className="h-full min-w-0 flex-1 bg-transparent text-base font-semibold text-black outline-none placeholder:text-zinc-500" placeholder="Search product or SKU" />
+                <input data-tutorial="stock-search" aria-label="Search inventory" value={query} onChange={(event) => setQuery(event.target.value)} className="h-full min-w-0 flex-1 bg-transparent text-base font-semibold text-black outline-none placeholder:text-zinc-500" placeholder="Search product or SKU" />
               </label>
               <div className="grid grid-cols-3 rounded-xl border border-border bg-zinc-50 p-1">
                 {(["all", "low", "out"] as const).map((filter) => (
@@ -1107,6 +1146,25 @@ export function InventoryDashboard({
           </FluidEntrySurface>
 
           <div className="mt-3 grid gap-2 sm:mt-4 sm:gap-2.5">
+            {rows.length === 0 ? (
+              <FluidEntrySurface className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50" contentClassName="p-7 text-center sm:p-10">
+                <h2 className="text-2xl font-black tracking-[-0.05em]">No inventory yet</h2>
+                <p className="mt-2 text-sm font-semibold text-zinc-500">{effectiveRole === "admin" ? "Create your first SKU to start tracking stock." : "Ask an admin to add the first SKU for this workspace."}</p>
+                {effectiveRole === "admin" ? (
+                  <Button asChild className="mt-5 h-11 rounded-xl bg-black px-5 font-black text-white hover:bg-black">
+                    <Link href="/sku">Add First SKU</Link>
+                  </Button>
+                ) : null}
+              </FluidEntrySurface>
+            ) : stockEntries.length === 0 ? (
+              <FluidEntrySurface className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50" contentClassName="p-7 text-center sm:p-10">
+                <h2 className="text-2xl font-black tracking-[-0.05em]">No matching inventory</h2>
+                <p className="mt-2 text-sm font-semibold text-zinc-500">Clear the search or stock filter to see all products.</p>
+                <Button type="button" variant="outline" onClick={() => { setQuery(""); setStockFilter("all"); }} className="mt-5 h-11 rounded-xl bg-white px-5 font-black hover:bg-white">
+                  Clear Filters
+                </Button>
+              </FluidEntrySurface>
+            ) : null}
             {stockEntries.map((entry, index) => {
               if (entry.type === "group") {
                 return (
@@ -1125,13 +1183,8 @@ export function InventoryDashboard({
             })}
           </div>
 
-          <FluidEntrySurface className="mt-4 rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl sm:mt-5 sm:rounded-3xl" contentClassName="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-5 sm:px-6 sm:py-4">
+          <FluidEntrySurface className="mt-4 rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl sm:mt-5 sm:rounded-3xl" contentClassName="px-4 py-3 sm:px-6 sm:py-4">
             <div className="text-base font-bold text-zinc-500">Showing {stockEntries.length} product groups from {rows.length} SKUs</div>
-            <div className="hidden items-center gap-4 sm:flex">
-              <Button variant="outline" size="icon" aria-label="Previous page" className="size-12 rounded-xl border-border bg-white hover:bg-white"><ChevronLeft className="size-5" /></Button>
-              <Button size="icon" className="size-12 rounded-xl bg-black text-lg font-bold text-white hover:bg-black">1</Button>
-              <Button variant="outline" size="icon" aria-label="Next page" className="size-12 rounded-xl border-border bg-white hover:bg-white"><ChevronRight className="size-5" /></Button>
-            </div>
           </FluidEntrySurface>
         </section>
       </div>
@@ -1144,7 +1197,7 @@ export function InventoryDashboard({
             <div className="mx-auto mb-4 h-1.5 w-12 rounded-full bg-zinc-200" />
             <div className="flex items-center gap-2 rounded-2xl bg-zinc-100 px-4 py-3 text-sm font-black text-zinc-600">
               <ShieldCheck className="size-5" />
-              {effectiveRole === "admin" ? "Admin view" : "Staff-safe view"}
+              {roleViewLabel(effectiveRole)}
             </div>
             <div className="mt-4 grid gap-3">
               {isAdmin ? (

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
 import { requireMembership } from "@/lib/auth";
+import { safeActionError } from "@/lib/action-error";
 import { normalizeWhatsAppNumber } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/server";
 import type { PartnerShareStatus } from "@/types/database";
@@ -67,6 +68,7 @@ async function existsInSelectedWorkspace(
 ) {
   const supabase = await createClient();
   const { data, error } = await supabase.from(table).select("id").eq("id", id).eq("organization_id", organizationId).maybeSingle();
+  if (error) safeActionError(error, `partner-share.${table}.workspace-check`, "Unable to verify this record.");
   return !error && Boolean(data);
 }
 
@@ -104,7 +106,7 @@ export async function savePartnerAction(input: z.input<typeof partnerSchema>) {
       };
   const { data, error } = await supabase.rpc(rpcName, args);
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: safeActionError(error, "partner-share.save-partner", "Partner could not be saved.") };
   revalidatePartnerShare();
   return { ok: true, partnerId: data };
 }
@@ -123,7 +125,7 @@ export async function archivePartnerAction(partnerId: string) {
   }
 
   const { error } = await supabase.rpc("admin_archive_partner", { p_partner_id: parsed.data });
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: safeActionError(error, "partner-share.archive-partner", "Partner could not be archived.") };
   revalidatePartnerShare();
   return { ok: true };
 }
@@ -152,7 +154,7 @@ export async function createPartnerShareSheetAction(input: z.input<typeof sheetS
     p_share_date: parsed.data.shareDate,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: safeActionError(error, "partner-share.create-sheet", "Share sheet could not be created.") };
   revalidatePartnerShare();
   return { ok: true, sheetId: data };
 }
@@ -182,7 +184,7 @@ export async function addPartnerShareItemAction(input: z.input<typeof addItemSch
     p_remark: parsed.data.remark || null,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: safeActionError(error, "partner-share.add-item", "Product could not be added.") };
   revalidatePartnerShare();
   return { ok: true };
 }
@@ -206,7 +208,7 @@ export async function updatePartnerShareItemAction(input: z.input<typeof updateI
     p_remark: parsed.data.remark || null,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: safeActionError(error, "partner-share.update-item", "Share item could not be updated.") };
   revalidatePartnerShare();
   return { ok: true };
 }
@@ -225,7 +227,7 @@ export async function removePartnerShareItemAction(itemId: string) {
   }
 
   const { error } = await supabase.rpc("admin_remove_partner_share_item", { p_item_id: parsed.data });
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: safeActionError(error, "partner-share.remove-item", "Product could not be removed.") };
   revalidatePartnerShare();
   return { ok: true };
 }
@@ -248,7 +250,7 @@ export async function updatePartnerShareStatusAction(input: { sheetId: string; s
     p_status: parsed.data.status,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: safeActionError(error, "partner-share.update-status", "Share status could not be updated.") };
   revalidatePartnerShare();
   return { ok: true };
 }
@@ -271,7 +273,7 @@ export async function updatePartnerShareAutoSyncAction(input: z.input<typeof aut
     p_auto_sync_with_main_store: parsed.data.autoSyncWithMainStore,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: safeActionError(error, "partner-share.auto-sync", "Auto-sync could not be updated.") };
   revalidatePartnerShare();
   return { ok: true };
 }
@@ -290,7 +292,7 @@ export async function deductPartnerShareStockAction(sheetId: string) {
   }
 
   const { error } = await supabase.rpc("admin_deduct_partner_share_stock", { p_sheet_id: parsed.data });
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: safeActionError(error, "partner-share.deduct-stock", "Stock could not be deducted.") };
   revalidatePartnerShare();
   return { ok: true };
 }
@@ -311,7 +313,7 @@ export async function recordPartnerShareOutputAction(input: z.input<typeof outpu
     p_output_type: parsed.data.outputType,
   });
 
-  if (error) return { ok: false, error: error.message };
+  if (error) return { ok: false, error: safeActionError(error, "partner-share.record-output", "Output could not be recorded.") };
   revalidatePartnerShare();
   return { ok: true };
 }

@@ -39,7 +39,16 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
   ]);
 
   if (staffError || adminError || restockError) {
-    throw new Error(staffError?.message ?? adminError?.message ?? restockError?.message ?? "Failed to load inventory");
+    console.error("Inventory overview failed to load", {
+      workspaceId: membership.organization_id,
+      staffCode: staffError?.code ?? null,
+      adminCode: adminError?.code ?? null,
+      restockCode: restockError?.code ?? null,
+      staffMessage: staffError?.message ?? null,
+      adminMessage: adminError?.message ?? null,
+      restockMessage: restockError?.message ?? null,
+    });
+    throw new Error("Unable to load inventory.");
   }
 
   const [signedStaffRows, signedAdminRows] = await Promise.all([

@@ -2,16 +2,25 @@ import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
 
 import { createClient } from "@/lib/supabase/server";
-import type { Membership, WorkspaceMembership } from "@/types/database";
+import type { MemberRole, Membership, WorkspaceMembership } from "@/types/database";
 
 export const WORKSPACE_COOKIE = "aero:workspace-id";
+
+function toMemberRole(role: string): MemberRole {
+  if (role === "admin" || role === "viewer") return role;
+  return "staff";
+}
 
 function toWorkspace(row: WorkspaceMembership): WorkspaceMembership {
   return {
     ...row,
-    role: row.role === "admin" ? "admin" : "staff",
+    role: toMemberRole(row.role),
     status: row.status === "disabled" ? "disabled" : row.status === "invited" ? "invited" : "active",
   };
+}
+
+export function isMissingSessionError(error: { name?: string; code?: string } | null) {
+  return error?.name === "AuthSessionMissingError" || error?.code === "session_not_found";
 }
 
 export async function getSelectedWorkspaceId() {
@@ -36,12 +45,40 @@ export async function getAvailableWorkspaces(): Promise<WorkspaceMembership[]> {
   const supabase = await createClient();
   const { data: userData, error: userError } = await supabase.auth.getUser();
 
-  if (userError || !userData.user) return [];
+  if (userError && !isMissingSessionError(userError)) {
+    console.error("Workspace session lookup failed", {
+      name: userError.name,
+      status: userError.status,
+      message: userError.message,
+    });
+    throw new Error("Unable to verify the current session.");
+  }
 
-  await supabase.rpc("claim_bootstrap_admin");
+  if (!userData.user) return [];
+
+  const { error: bootstrapError } = await supabase.rpc("claim_bootstrap_admin");
+
+  if (bootstrapError) {
+    console.error("Workspace bootstrap check failed", {
+      userId: userData.user.id,
+      code: bootstrapError.code,
+      message: bootstrapError.message,
+    });
+    throw new Error("Unable to prepare workspace access.");
+  }
 
   const { data, error } = await supabase.rpc("get_my_workspaces");
-  if (error || !data) return [];
+
+  if (error) {
+    console.error("Workspace list lookup failed", {
+      userId: userData.user.id,
+      code: error.code,
+      message: error.message,
+    });
+    throw new Error("Unable to load workspaces.");
+  }
+
+  if (!data) return [];
 
   return (data as WorkspaceMembership[]).map(toWorkspace).filter((workspace) => workspace.status === "active");
 }
@@ -61,7 +98,7 @@ export async function getCurrentMembership(): Promise<Membership | null> {
     organization_name: row.organization_name,
     organization_icon: row.organization_icon,
     organization_slug: row.organization_slug,
-    role: row.role === "admin" ? "admin" : "staff",
+    role: toMemberRole(row.role),
     user_email: row.user_email ?? "",
     full_name: row.full_name,
     workspaces,

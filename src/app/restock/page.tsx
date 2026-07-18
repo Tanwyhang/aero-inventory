@@ -20,13 +20,20 @@ export default async function RestockPage() {
   ]);
 
   if (adminError || restockError) {
-    throw new Error(adminError?.message ?? restockError?.message ?? "Failed to load restock requests");
+    console.error("Restock data failed to load", {
+      workspaceId: membership.organization_id,
+      inventoryCode: adminError?.code ?? null,
+      restockCode: restockError?.code ?? null,
+      inventoryMessage: adminError?.message ?? null,
+      restockMessage: restockError?.message ?? null,
+    });
+    throw new Error("Unable to load restock requests.");
   }
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
-        <AppSidebar active="restock" role="admin" restockCount={(restockRequests ?? []).length} />
+        <AppSidebar active="restock" role="admin" workspaceName={membership.organization_name} restockCount={(restockRequests ?? []).length} />
 
         <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <header>

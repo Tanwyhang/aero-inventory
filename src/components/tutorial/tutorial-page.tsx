@@ -13,9 +13,10 @@ import type { Membership } from "@/types/database";
 export function TutorialPage({ membership }: { membership: Membership }) {
   const [lessonId, setLessonId] = useState<TutorialLessonId>("stock");
   const [frameSize, setFrameSize] = useState<"desktop" | "mobile">("desktop");
-  const lessons = useMemo(() => getVisibleLessons(membership.role), [membership.role]);
+  const tutorialRole = membership.role === "admin" ? "admin" : "staff";
+  const lessons = useMemo(() => getVisibleLessons(tutorialRole), [tutorialRole]);
   const selectedLesson = lessons.find((lesson) => lesson.id === lessonId) ?? lessons[0];
-  const frameSrc = `/tutorial/embed?lesson=${selectedLesson.id}&role=${membership.role}`;
+  const frameSrc = `/tutorial/embed?lesson=${selectedLesson.id}&role=${tutorialRole}`;
 
   function downloadSelectedLesson() {
     const lessonUrl = new URL(frameSrc, window.location.origin).toString();
@@ -58,7 +59,7 @@ export function TutorialPage({ membership }: { membership: Membership }) {
   return (
     <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
-        <AppSidebar active="tutorial" role={membership.role} />
+        <AppSidebar active="tutorial" role={membership.role} workspaceName={membership.organization_name} />
         <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <header className="flex flex-col gap-5 xl:flex-row xl:items-start xl:justify-between">
             <div>
@@ -112,7 +113,7 @@ export function TutorialPage({ membership }: { membership: Membership }) {
               </div>
               <div className={cn("rounded-[1.45rem] bg-white", frameSize === "desktop" ? "overflow-auto" : "overflow-hidden")}>
                 <iframe
-                  key={`${selectedLesson.id}-${membership.role}-${frameSize}`}
+                  key={`${selectedLesson.id}-${tutorialRole}-${frameSize}`}
                   title={`${selectedLesson.label} tutorial`}
                   src={frameSrc}
                   className={cn(

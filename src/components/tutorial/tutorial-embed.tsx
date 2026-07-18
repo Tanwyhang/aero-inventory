@@ -55,7 +55,7 @@ function ReportsReplica() {
   return (
     <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
-        <AppSidebar active="reports" role="admin" restockCount={demoRestockRequests.length} />
+        <AppSidebar active="reports" role="admin" workspaceName={demoMembership("admin").organization_name} restockCount={demoRestockRequests.length} />
         <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <h1 className="text-2xl font-black tracking-[-0.055em] sm:text-[44px]">Reports</h1>
           <p className="mt-1.5 text-sm font-semibold text-zinc-500 sm:text-base">Operational stock, restock, and audit trail.</p>
@@ -75,7 +75,7 @@ function RolesReplica({ role }: { role: "admin" | "staff" }) {
   return (
     <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
-        <AppSidebar active="tutorial" role={role} restockCount={role === "admin" ? demoRestockRequests.length : 0} showStaffToggle={role === "admin"} isViewingAsStaff={false} />
+        <AppSidebar active="tutorial" role={role} workspaceName={demoMembership(role).organization_name} restockCount={role === "admin" ? demoRestockRequests.length : 0} showStaffToggle={role === "admin"} isViewingAsStaff={false} />
         <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <header>
             <h1 className="text-2xl font-black tracking-[-0.055em] sm:text-[44px]">Admin vs Staff</h1>
@@ -112,7 +112,7 @@ function LessonReplica({ lessonId, role }: { lessonId: TutorialLessonId; role: "
     return (
       <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
         <div className="min-h-screen lg:pl-[242px]">
-          <AppSidebar active="restock" role="admin" restockCount={demoRestockRequests.length} />
+          <AppSidebar active="restock" role="admin" workspaceName={demoMembership("admin").organization_name} restockCount={demoRestockRequests.length} />
           <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
             <header>
               <h1 className="text-2xl font-black tracking-[-0.055em] sm:text-[44px]">Restock</h1>

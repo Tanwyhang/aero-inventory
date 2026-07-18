@@ -32,7 +32,16 @@ export default async function SkuPage() {
   ]);
 
   if (error || restockError || categoriesError) {
-    throw new Error(error?.message ?? restockError?.message ?? categoriesError?.message ?? "Failed to load SKUs");
+    console.error("SKU manager data failed to load", {
+      workspaceId: membership.organization_id,
+      skuCode: error?.code ?? null,
+      restockCode: restockError?.code ?? null,
+      categoriesCode: categoriesError?.code ?? null,
+      skuMessage: error?.message ?? null,
+      restockMessage: restockError?.message ?? null,
+      categoriesMessage: categoriesError?.message ?? null,
+    });
+    throw new Error("Unable to load SKUs.");
   }
 
   const rows = await withSignedSkuPhotoUrls((data ?? []) as AdminSkuManagerRow[]);

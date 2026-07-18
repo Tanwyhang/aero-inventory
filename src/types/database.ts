@@ -10,6 +10,7 @@ export type StockAdjustmentReason =
   | "Warehouse Transfer";
 
 export type PartnerShareStatus = "draft" | "confirmed" | "sent" | "completed";
+export type MemberRole = "admin" | "staff" | "viewer";
 
 export type Database = {
   public: {
@@ -23,6 +24,25 @@ export type Database = {
           default_country: string;
           created_by: string | null;
           archived_at: string | null;
+          suspended_at: string | null;
+          created_at: string;
+          updated_at: string;
+        };
+      };
+      plan_entitlements: {
+        Row: {
+          organization_id: string;
+          plan: "basic" | "custom";
+          admin_limit: number;
+          staff_limit: number;
+          sku_limit: number;
+          location_limit: number;
+          excel_import_export_enabled: boolean;
+          barcode_enabled: boolean;
+          expiry_reminder_enabled: boolean;
+          advanced_report_enabled: boolean;
+          advanced_permission_enabled: boolean;
+          stock_transfer_enabled: boolean;
           created_at: string;
           updated_at: string;
         };
@@ -41,7 +61,7 @@ export type Database = {
         Row: {
           organization_id: string;
           user_id: string;
-          role: "admin" | "staff";
+          role: MemberRole;
           status: "active" | "invited" | "disabled";
           invited_by: string | null;
           accepted_at: string | null;
@@ -63,7 +83,7 @@ export type Database = {
           id: string;
           organization_id: string;
           email: string | null;
-          role: "admin" | "staff";
+          role: MemberRole;
           token_hash: string;
           invite_token: string | null;
           max_uses: number;
@@ -210,6 +230,18 @@ export type Database = {
         Args: Record<PropertyKey, never>;
         Returns: string;
       };
+      claim_platform_admin: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+      is_aero_super_admin: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+      record_user_login: {
+        Args: Record<PropertyKey, never>;
+        Returns: string;
+      };
       get_my_membership: {
         Args: Record<PropertyKey, never>;
         Returns: {
@@ -234,7 +266,7 @@ export type Database = {
         Returns: string;
       };
       admin_invite_workspace_member: {
-        Args: { p_organization_id: string; p_email: string; p_role?: "admin" | "staff"; p_expires_in_days?: number };
+        Args: { p_organization_id: string; p_email: string; p_role?: MemberRole; p_expires_in_days?: number };
         Returns: WorkspaceInviteTokenRow[];
       };
       accept_workspace_invite: {
@@ -250,7 +282,7 @@ export type Database = {
         Returns: WorkspaceInviteRow[];
       };
       admin_update_workspace_member_role: {
-        Args: { p_organization_id: string; p_user_id: string; p_role: "admin" | "staff" };
+        Args: { p_organization_id: string; p_user_id: string; p_role: MemberRole };
         Returns: string;
       };
       admin_set_workspace_member_status: {
@@ -259,6 +291,31 @@ export type Database = {
       };
       admin_revoke_workspace_invite: {
         Args: { p_invite_id: string };
+        Returns: string;
+      };
+      admin_archive_workspace: {
+        Args: { p_organization_id: string };
+        Returns: string;
+      };
+      get_workspace_seat_usage: {
+        Args: { p_organization_id: string };
+        Returns: WorkspaceSeatUsageRow[];
+      };
+      super_admin_list_customers: {
+        Args: Record<PropertyKey, never>;
+        Returns: SuperAdminCustomerRow[];
+      };
+      super_admin_update_workspace: {
+        Args: {
+          p_organization_id: string;
+          p_status?: "active" | "suspended" | null;
+          p_admin_limit?: number | null;
+          p_staff_limit?: number | null;
+        };
+        Returns: string;
+      };
+      super_admin_set_platform_admin: {
+        Args: { p_email: string; p_is_active: boolean };
         Returns: string;
       };
       get_staff_inventory_overview: {
@@ -270,15 +327,15 @@ export type Database = {
         Returns: AdminInventoryRow[];
       };
       adjust_stock: {
-        Args: { p_sku_id: string; p_location_id: string; p_delta: number; p_note?: string | null; p_reason?: StockAdjustmentReason };
+        Args: { p_organization_id: string; p_sku_id: string; p_location_id: string; p_delta: number; p_note?: string | null; p_reason?: StockAdjustmentReason; p_expected_quantity?: number | null };
         Returns: { sku_id: string; location_id: string; quantity: number; movement_id: string }[];
       };
       create_restock_request: {
-        Args: { p_sku_id: string; p_location_id: string; p_requested_qty?: number | null; p_note?: string | null };
+        Args: { p_organization_id: string; p_sku_id: string; p_location_id: string; p_requested_qty?: number | null; p_note?: string | null };
         Returns: string;
       };
       update_restock_request_status: {
-        Args: { p_request_id: string; p_status: "open" | "acknowledged" | "ordered" | "resolved" | "cancelled"; p_comment?: string | null };
+        Args: { p_organization_id: string; p_request_id: string; p_status: "open" | "acknowledged" | "ordered" | "resolved" | "cancelled"; p_comment?: string | null };
         Returns: string;
       };
       get_admin_restock_requests: {
@@ -300,6 +357,45 @@ export type Database = {
       admin_update_sku: {
         Args: Record<string, unknown>;
         Returns: string;
+      };
+      admin_update_sku_with_stock: {
+        Args: {
+          p_organization_id: string;
+          p_sku_id: string;
+          p_location_id: string;
+          p_expected_quantity: number;
+          p_target_quantity: number;
+          p_supplier_name: string;
+          p_contact_name: string;
+          p_country: string;
+          p_phone_raw: string;
+          p_whatsapp_number: string;
+          p_sku_code: string;
+          p_name: string;
+          p_variant: string;
+          p_price: number;
+          p_low_stock_qty: number;
+          p_max_stock_qty: number;
+          p_category_name?: string | null;
+        };
+        Returns: string;
+      };
+      admin_save_sku_variation_group: {
+        Args: {
+          p_organization_id: string;
+          p_variation_group_id: string | null;
+          p_product_name: string;
+          p_variation_name: string;
+          p_add_variation_images: boolean;
+          p_supplier_name: string;
+          p_contact_name: string;
+          p_country: string;
+          p_phone_raw: string;
+          p_whatsapp_number: string;
+          p_category_name: string | null;
+          p_items: Json;
+        };
+        Returns: Json;
       };
       admin_archive_sku: {
         Args: { p_sku_id: string };
@@ -371,7 +467,7 @@ export type Database = {
       };
     };
     Enums: {
-      member_role: "admin" | "staff";
+      member_role: MemberRole;
       member_status: "active" | "invited" | "disabled";
       movement_type: "add" | "deduct" | "adjustment";
       plan_name: "basic" | "custom";
@@ -412,7 +508,7 @@ export type Membership = {
   organization_name: string;
   organization_icon: string;
   organization_slug: string | null;
-  role: "admin" | "staff";
+  role: MemberRole;
   user_email: string;
   full_name: string | null;
   workspaces: WorkspaceMembership[];
@@ -423,7 +519,7 @@ export type WorkspaceMembership = {
   organization_name: string;
   organization_icon: string;
   organization_slug: string | null;
-  role: "admin" | "staff";
+  role: MemberRole;
   status: "active" | "invited" | "disabled";
   user_email: string | null;
   full_name: string | null;
@@ -436,7 +532,7 @@ export type WorkspaceMemberRow = {
   user_id: string;
   email: string | null;
   full_name: string | null;
-  role: "admin" | "staff";
+  role: MemberRole;
   status: "active" | "invited" | "disabled";
   invited_by: string | null;
   accepted_at: string | null;
@@ -448,7 +544,7 @@ export type WorkspaceMemberRow = {
 export type WorkspaceInviteRow = {
   id: string;
   email: string | null;
-  role: "admin" | "staff";
+  role: MemberRole;
   invite_token: string | null;
   expires_at: string;
   revoked_at: string | null;
@@ -462,8 +558,51 @@ export type WorkspaceInviteTokenRow = {
   invite_id: string;
   token: string;
   email: string;
-  role: "admin" | "staff";
+  role: MemberRole;
   expires_at: string;
+};
+
+export type WorkspaceSeatUsageRow = {
+  organization_id: string;
+  admin_limit: number;
+  active_admin_count: number;
+  invited_admin_count: number;
+  reserved_admin_count: number;
+  remaining_admin_count: number;
+  staff_limit: number;
+  active_staff_count: number;
+  invited_staff_count: number;
+  reserved_staff_count: number;
+  remaining_staff_count: number;
+  active_viewer_count: number;
+};
+
+export type SuperAdminCustomerRow = {
+  organization_id: string;
+  organization_name: string;
+  organization_icon: string;
+  organization_slug: string | null;
+  status: "active" | "suspended" | "archived";
+  plan: "basic" | "custom";
+  admin_limit: number;
+  staff_limit: number;
+  sku_limit: number;
+  warehouse_limit: number;
+  active_admin_count: number;
+  invited_admin_count: number;
+  reserved_admin_count: number;
+  active_staff_count: number;
+  invited_staff_count: number;
+  reserved_staff_count: number;
+  active_viewer_count: number;
+  member_count: number;
+  sku_count: number;
+  warehouse_count: number;
+  primary_admin_email: string | null;
+  primary_admin_name: string | null;
+  last_login_at: string | null;
+  created_at: string;
+  archived_at: string | null;
 };
 
 export type RestockStatus = "open" | "acknowledged" | "ordered" | "resolved" | "cancelled";

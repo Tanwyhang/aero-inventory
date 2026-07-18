@@ -5,7 +5,6 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ImageIcon, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
 
-import { adjustStockAction } from "@/app/actions/stock";
 import { archiveSkuAction, createProductCategoryAction, createSkuAction, createVariationGroupAction, removeSkuPhotoAction, updateProductCategoryAction, updateSkuAction, uploadSkuPhotoAction } from "@/app/actions/skus";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ConfirmSlideSheet, type ConfirmationRecord } from "@/components/confirm-slide-sheet";
@@ -15,7 +14,6 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { LumaSpinner } from "@/components/ui/luma-spinner";
 import { toast } from "@/components/ui/toast";
-import { DEFAULT_STOCK_ADJUSTMENT_REASON } from "@/lib/stock-reasons";
 import type { AdminSkuManagerRow, Membership } from "@/types/database";
 
 type Draft = {
@@ -82,6 +80,7 @@ type PendingConfirmation = {
   description: string;
   records: ConfirmationRecord[];
   confirmLabel?: string;
+  confirmVariant?: "default" | "destructive";
   onConfirm: () => Promise<void>;
   onCancel?: () => void;
 };
@@ -110,6 +109,12 @@ const demoDraft: Draft = {
 };
 
 const inputClassName = "h-12 w-full min-w-0 rounded-xl border-2 border-zinc-300 bg-white px-4 font-semibold outline-none transition placeholder:text-zinc-400 focus:border-black focus:ring-2 focus:ring-lime";
+
+function normalizeNumericInput(value: string, integer = false) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return "0";
+  return String(integer ? Math.trunc(parsed) : parsed);
+}
 
 function newVariationItem(index: number): VariationItemDraft {
   const suffix = Date.now().toString().slice(-5);
@@ -532,6 +537,8 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
         { label: "SKU", value: item.skuCode || "Not set yet" },
         { label: "Queued Types", value: `${variationDraft.items.length} -> ${variationDraft.items.length - 1}` },
       ],
+      confirmLabel: "Remove Type",
+      confirmVariant: "destructive",
       onConfirm: async () => {
         const nextCount = variationDraft.items.length - 1;
         setVariationDraft((current) => ({
@@ -612,6 +619,11 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
       return;
     }
 
+    if (normalizedExistingItems.some((item) => !item.locationId)) {
+      setError("A saved type is missing its stock location. Refresh and try again.");
+      return;
+    }
+
     if (new Set(allSkuCodes.map((value) => value.trim().toLowerCase()).filter(Boolean)).size !== allSkuCodes.filter(Boolean).length) {
       setError("SKU IDs must be unique across saved and new types.");
       return;
@@ -652,66 +664,34 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
     const newItems = normalizedVariationItems();
 
     try {
-      for (const item of existingItems) {
-        const updateResult = await updateSkuAction({
-          skuId: item.skuId,
-          productName: variationDraft.productName,
-          variant: item.name,
-          skuCode: item.skuCode,
-          categoryName: variationDraft.categoryName,
-          supplierName: variationDraft.supplierName,
-          contactName: variationDraft.contactName,
-          country: variationDraft.country,
-          phoneRaw: variationDraft.phoneRaw,
-          price: item.price,
-          lowStockQty: item.lowStockQty,
-          maxStockQty: item.maxStockQty,
-          openingStock: item.currentStock,
-        });
+      const formData = new FormData();
+      formData.set("payload", JSON.stringify({
+        productName: variationDraft.productName,
+        variationGroupId: variationDraft.variationGroupId,
+        variationName: variationDraft.variationName,
+        addVariationImages: variationDraft.addVariationImages,
+        categoryName: variationDraft.categoryName,
+        supplierName: variationDraft.supplierName,
+        contactName: variationDraft.contactName,
+        country: variationDraft.country,
+        phoneRaw: variationDraft.phoneRaw,
+        existingItems,
+        items: newItems,
+      }));
 
-        if (updateResult.ok !== true) throw new Error(updateResult.error ?? `SKU update failed for ${item.name}.`);
-
-        const delta = item.currentStock - item.originalStock;
-        if (delta !== 0 && item.locationId) {
-          const stockResult = await adjustStockAction({
-            skuId: item.skuId,
-            locationId: item.locationId,
-            movement: delta,
-            reason: DEFAULT_STOCK_ADJUSTMENT_REASON,
-            note: "Updated from SKU bundle manager",
-          });
-
-          if (!stockResult.ok) throw new Error(stockResult.error ?? `Stock update failed for ${item.name}.`);
+      if (variationDraft.addVariationImages) {
+        for (const item of variationDraft.items) {
+          if (item.photoFile) formData.set(`photo:${item.clientId}`, item.photoFile);
         }
       }
 
-      if (newItems.length > 0) {
-        const formData = new FormData();
-        formData.set("payload", JSON.stringify({
-          productName: variationDraft.productName,
-          variationGroupId: variationDraft.variationGroupId,
-          variationName: variationDraft.variationName,
-          addVariationImages: variationDraft.addVariationImages,
-          categoryName: variationDraft.categoryName,
-          supplierName: variationDraft.supplierName,
-          contactName: variationDraft.contactName,
-          country: variationDraft.country,
-          phoneRaw: variationDraft.phoneRaw,
-          items: newItems,
-        }));
+      const result = await createVariationGroupAction(formData);
+      if (result.ok !== true) throw new Error("SKU types could not be saved. Refresh and try again.");
 
-        if (variationDraft.addVariationImages) {
-          for (const item of variationDraft.items) {
-            if (item.photoFile) formData.set(`photo:${item.clientId}`, item.photoFile);
-          }
-        }
-
-        const result = await createVariationGroupAction(formData);
-        if (result.ok !== true) throw new Error(result.error ?? "Variation group save failed.");
-      }
-
-      setIsPending(false);
       toast.success(variationDraft.variationGroupId ? "Bundle changes saved" : "SKU types created", { description: `${variationDraft.productName}: ${existingItems.length} saved types updated, ${newItems.length} new types created.` });
+      if ("warnings" in result && Array.isArray(result.warnings) && result.warnings.length > 0) {
+        toast.warning("SKU types saved with photo warnings", { description: "One or more photos could not be saved. Reopen the affected SKU to retry." });
+      }
       setConfirmation(null);
       setIsOpen(false);
       setCreateMode("single");
@@ -720,11 +700,12 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
       setManagedVariationItems([]);
       router.refresh();
     } catch (saveError) {
-      setIsPending(false);
-      const message = saveError instanceof Error ? saveError.message : "Bundle save failed.";
+      console.error("SKU bundle save request failed", saveError);
+      const message = "SKU types could not be saved. Refresh and try again.";
       setConfirmError(message);
       toast.error("Bundle save failed", { description: message });
-      throw saveError;
+    } finally {
+      setIsPending(false);
     }
   }
 
@@ -737,6 +718,10 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
       const nextStock = Number(draft.openingStock || 0);
       if (!Number.isInteger(nextStock) || nextStock < 0) {
         setError("Enter a valid current stock count.");
+        return;
+      }
+      if (!draft.skuId || !draft.locationId) {
+        setError("This SKU is missing its stock location. Refresh and try again.");
         return;
       }
     }
@@ -764,74 +749,57 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
     setIsPending(true);
     setConfirmError(null);
     const payload = normalizedSkuDraft();
-    const result = isEditing ? await updateSkuAction(payload) : await createSkuAction(payload);
+    let photoWarning = false;
 
-    if (result.ok !== true) {
-      setIsPending(false);
-      const message = result.error ?? "SKU save failed.";
+    try {
+      const result = isEditing
+        ? await updateSkuAction({
+            ...payload,
+            skuId: draft.skuId ?? "",
+            locationId: draft.locationId ?? "",
+            expectedStock: Number(draft.originalStock || 0),
+            targetStock: Number(draft.openingStock || 0),
+          })
+        : await createSkuAction(payload);
+
+      if (result.ok !== true) throw new Error("SKU could not be saved. Refresh and try again.");
+
+      const createdSkuId = "skuId" in result && typeof result.skuId === "string" ? result.skuId : undefined;
+      const skuId = draft.skuId ?? createdSkuId;
+
+      if (photoFile && skuId) {
+        const formData = new FormData();
+        formData.set("skuId", skuId);
+        formData.set("photo", photoFile);
+
+        try {
+          const photoResult = await uploadSkuPhotoAction(formData);
+          photoWarning = photoResult.ok !== true;
+        } catch (photoError) {
+          console.error("SKU photo upload request failed after SKU save", photoError);
+          photoWarning = true;
+        }
+      } else if (photoFile) {
+        photoWarning = true;
+      }
+
+      toast.success(isEditing ? "SKU update recorded" : "SKU created", { description: `${payload.productName} (${payload.skuCode})` });
+      if (photoWarning) {
+        toast.warning("SKU saved without the new photo", { description: "Reopen the SKU and retry the photo upload." });
+      }
+      setConfirmation(null);
+      setIsOpen(false);
+      setDraft({ ...demoDraft });
+      setPhotoFile(null);
+      router.refresh();
+    } catch (saveError) {
+      console.error("SKU save request failed", saveError);
+      const message = "SKU could not be saved. Refresh and try again.";
       setConfirmError(message);
       toast.error("SKU save failed", { description: message });
-      throw new Error(message);
+    } finally {
+      setIsPending(false);
     }
-
-    const createdSkuId = "skuId" in result && typeof result.skuId === "string" ? result.skuId : undefined;
-    const skuId = draft.skuId ?? createdSkuId;
-
-    if (isEditing && draft.locationId) {
-      const previousStock = Number(draft.originalStock || 0);
-      const nextStock = Number(draft.openingStock || 0);
-      const delta = nextStock - previousStock;
-
-      if (!Number.isInteger(nextStock) || nextStock < 0) {
-        setIsPending(false);
-        const message = "Enter a valid current stock count.";
-        setConfirmError(message);
-        toast.error("Stock update failed", { description: message });
-        throw new Error(message);
-      }
-
-      if (delta !== 0) {
-        const stockResult = await adjustStockAction({
-          skuId: draft.skuId ?? "",
-          locationId: draft.locationId,
-          movement: delta,
-          reason: DEFAULT_STOCK_ADJUSTMENT_REASON,
-          note: "Updated from SKU edit modal",
-        });
-
-        if (!stockResult.ok) {
-          setIsPending(false);
-          const message = stockResult.error ?? "Stock update failed.";
-          setConfirmError(message);
-          toast.error("Stock update failed", { description: message });
-          throw new Error(message);
-        }
-      }
-    }
-
-    if (photoFile && skuId) {
-      const formData = new FormData();
-      formData.set("skuId", skuId);
-      formData.set("photo", photoFile);
-      const photoResult = await uploadSkuPhotoAction(formData);
-
-      if (!photoResult.ok) {
-        setIsPending(false);
-        const message = photoResult.error ?? "SKU saved, but photo upload failed.";
-        setConfirmError(message);
-        toast.error("Photo upload failed", { description: message });
-        throw new Error(message);
-      }
-    }
-
-    setIsPending(false);
-
-    toast.success(isEditing ? "SKU update recorded" : "SKU created", { description: `${payload.productName} (${payload.skuCode})` });
-    setConfirmation(null);
-    setIsOpen(false);
-    setDraft({ ...demoDraft });
-    setPhotoFile(null);
-    router.refresh();
   }
 
   async function saveCategory() {
@@ -839,36 +807,43 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
     if (!name) return false;
     setIsCategoryPending(true);
     setError(null);
-    const result = editingCategoryId ? await updateProductCategoryAction({ categoryId: editingCategoryId, name }) : await createProductCategoryAction({ name });
-    setIsCategoryPending(false);
-    if (!result.ok) {
-      const message = result.error ?? "Category save failed.";
+    try {
+      const result = editingCategoryId ? await updateProductCategoryAction({ categoryId: editingCategoryId, name }) : await createProductCategoryAction({ name });
+      if (!result.ok) throw new Error("Category could not be saved. Refresh and try again.");
+
+      toast.success(editingCategoryId ? "Category updated" : "Category recorded", { description: name });
+      setDraft((current) => ({ ...current, categoryName: name }));
+      setVariationDraft((current) => ({ ...current, categoryName: name }));
+      setCategoryDraft("");
+      setEditingCategoryId(null);
+      setIsCategoryEditorOpen(false);
+      router.refresh();
+      return true;
+    } catch (categoryError) {
+      console.error("Category save request failed", categoryError);
+      const message = "Category could not be saved. Refresh and try again.";
       setError(message);
       toast.error("Category save failed", { description: message });
       return false;
+    } finally {
+      setIsCategoryPending(false);
     }
-    toast.success(editingCategoryId ? "Category updated" : "Category recorded", { description: name });
-    setDraft((current) => ({ ...current, categoryName: name }));
-    setVariationDraft((current) => ({ ...current, categoryName: name }));
-    setCategoryDraft("");
-    setEditingCategoryId(null);
-    setIsCategoryEditorOpen(false);
-    router.refresh();
-    return true;
   }
 
   function archiveCurrentSku() {
     if (!draft.skuId) return;
     setConfirmError(null);
     setConfirmation({
-      title: "Confirm SKU Delete",
-      description: "This will delete the SKU and remove it from active inventory views.",
+      title: "Archive SKU?",
+      description: "This hides the SKU from active inventory while preserving its stock and activity history.",
       records: [
         { label: "Product", value: draft.productName },
         { label: "Variant", value: draft.variant },
         { label: "SKU", value: draft.skuCode },
         { label: "Supplier", value: draft.supplierName },
       ],
+      confirmLabel: "Archive SKU",
+      confirmVariant: "destructive",
       onConfirm: () => executeArchiveSku(draft.skuId ?? ""),
     });
   }
@@ -876,18 +851,22 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
   async function executeArchiveSku(skuId: string) {
     setIsPending(true);
     setConfirmError(null);
-    const result = await archiveSkuAction(skuId);
-    setIsPending(false);
-    if (!result.ok) {
-      const message = result.error ?? "Delete failed.";
+    try {
+      const result = await archiveSkuAction(skuId);
+      if (!result.ok) throw new Error(result.error ?? "SKU could not be archived. Refresh and try again.");
+
+      toast.success("SKU archived", { description: "Inventory and activity history were preserved." });
+      setConfirmation(null);
+      setIsOpen(false);
+      router.refresh();
+    } catch (archiveError) {
+      console.error("SKU archive request failed", archiveError);
+      const message = archiveError instanceof Error ? archiveError.message : "SKU could not be archived. Refresh and try again.";
       setConfirmError(message);
-      toast.error("Delete failed", { description: message });
-      throw new Error(message);
+      toast.error("Archive failed", { description: message });
+    } finally {
+      setIsPending(false);
     }
-    toast.success("SKU deleted", { description: "The SKU was removed from active inventory." });
-    setConfirmation(null);
-    setIsOpen(false);
-    router.refresh();
   }
 
   function removePhoto() {
@@ -901,6 +880,8 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
         { label: "SKU", value: draft.skuCode },
         { label: "Photo", value: draft.photoPath ? "Remove current photo" : "No current photo" },
       ],
+      confirmLabel: "Remove Photo",
+      confirmVariant: "destructive",
       onConfirm: executeRemovePhoto,
     });
   }
@@ -909,18 +890,22 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
     if (!draft.skuId) return;
     setIsPhotoPending(true);
     setConfirmError(null);
-    const result = await removeSkuPhotoAction(draft.skuId ?? "");
-    setIsPhotoPending(false);
-    if (!result.ok) {
-      const message = result.error ?? "Photo removal failed.";
+    try {
+      const result = await removeSkuPhotoAction(draft.skuId);
+      if (!result.ok) throw new Error("Photo could not be removed. Refresh and try again.");
+
+      toast.success("Photo removed", { description: `${draft.productName} photo was cleared.` });
+      setConfirmation(null);
+      setIsOpen(false);
+      router.refresh();
+    } catch (photoError) {
+      console.error("SKU photo removal request failed", photoError);
+      const message = "Photo could not be removed. Refresh and try again.";
       setConfirmError(message);
       toast.error("Photo removal failed", { description: message });
-      throw new Error(message);
+    } finally {
+      setIsPhotoPending(false);
     }
-    toast.success("Photo removed", { description: `${draft.productName} photo was cleared.` });
-    setConfirmation(null);
-    setIsOpen(false);
-    router.refresh();
   }
 
   const categoryDropdownEditorProps = {
@@ -940,7 +925,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
   return (
     <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
-        <AppSidebar active="skus" role="admin" restockCount={restockCount} />
+        <AppSidebar active="skus" role="admin" workspaceName={membership.organization_name} restockCount={restockCount} />
         <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <header className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
             <div>
@@ -964,15 +949,32 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
           <div className="mt-6 grid gap-2 rounded-2xl border border-zinc-200 bg-white p-3 sm:grid-cols-[1fr_220px] sm:p-4">
             <label className="flex h-11 items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-3 focus-within:ring-2 focus-within:ring-lime">
               <Search className="size-4 shrink-0 text-zinc-500" />
-              <input data-tutorial="sku-search" value={query} onChange={(event) => setQuery(event.target.value)} className="h-full min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none placeholder:text-zinc-500" placeholder="Search name, variant, category, SKU, supplier" />
+              <input data-tutorial="sku-search" aria-label="Search SKUs" value={query} onChange={(event) => setQuery(event.target.value)} className="h-full min-w-0 flex-1 bg-transparent text-sm font-semibold outline-none placeholder:text-zinc-500" placeholder="Search name, variant, category, SKU, supplier" />
             </label>
-            <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="h-11 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-lime">
+            <select aria-label="Filter SKUs by category" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)} className="h-11 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm font-black outline-none focus:ring-2 focus:ring-lime">
               <option value="all">All categories</option>
               {categories.map((category) => <option key={category.id} value={category.name}>{category.name}</option>)}
             </select>
           </div>
 
           <div className="mt-4 grid gap-3">
+            {rows.length === 0 ? (
+              <FluidEntrySurface className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50" contentClassName="p-7 text-center sm:p-10">
+                <h2 className="text-2xl font-black tracking-[-0.05em]">No SKUs yet</h2>
+                <p className="mt-2 text-sm font-semibold text-zinc-500">Create the first product to begin tracking inventory.</p>
+                <Button type="button" onClick={openCreate} className="mt-5 h-11 rounded-xl bg-black px-5 font-black text-white hover:bg-black">
+                  <Plus className="size-4" /> Add First SKU
+                </Button>
+              </FluidEntrySurface>
+            ) : tableEntries.length === 0 ? (
+              <FluidEntrySurface className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50" contentClassName="p-7 text-center sm:p-10">
+                <h2 className="text-2xl font-black tracking-[-0.05em]">No matching SKUs</h2>
+                <p className="mt-2 text-sm font-semibold text-zinc-500">Clear the search or category filter to see all SKUs.</p>
+                <Button type="button" variant="outline" onClick={() => { setQuery(""); setCategoryFilter("all"); }} className="mt-5 h-11 rounded-xl bg-white px-5 font-black hover:bg-white">
+                  Clear Filters
+                </Button>
+              </FluidEntrySurface>
+            ) : null}
             {tableEntries.map((entry) => {
               if (entry.type === "group") {
                 const firstRow = entry.rows[0];
@@ -1170,16 +1172,16 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
       </div>
 
       {isOpen ? (
-        <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={() => setIsOpen(false)}>
+        <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={() => !isPending && !isPhotoPending && setIsOpen(false)}>
           <div className="w-full max-w-[23rem] sm:max-w-6xl" onClick={(event) => event.stopPropagation()}>
             <FluidEntrySurface data-tutorial="sku-modal" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
-              <form onSubmit={isEditing || createMode === "single" ? handleSubmit : handleVariationSubmit}>
+              <form onSubmit={isEditing || createMode === "single" ? handleSubmit : handleVariationSubmit} aria-busy={isPending || isPhotoPending}>
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                 <div>
                   <h2 className="text-xl font-black tracking-[-0.05em] sm:text-2xl">{isEditing ? "Edit SKU" : createMode === "variation" ? (variationDraft.variationGroupId ? "Edit Bundle" : "Add SKU With Types") : "Add SKU"}</h2>
                   <p className="mt-1 text-sm font-semibold text-zinc-500">{createMode === "variation" && !isEditing ? (variationDraft.variationGroupId ? "Edit saved child SKUs, update stock rules, and add new types when needed." : "Create one main SKU with types like flavor, size, or color.") : "Manage product SKU details and admin-only supplier contact information."}</p>
                 </div>
-                <button type="button" onClick={() => setIsOpen(false)} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-white text-black" aria-label="Close SKU form">
+                <button type="button" onClick={() => setIsOpen(false)} disabled={isPending || isPhotoPending} className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-border bg-white text-black disabled:opacity-50" aria-label="Close SKU form">
                   <X className="size-5" />
                 </button>
               </div>
@@ -1216,10 +1218,10 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                   </FormSection>
 
                   <FormSection title="Stock Rules">
-                    <Field label="Price"><input required min={0} step="0.01" type="number" className={inputClassName} value={draft.price} onChange={(event) => updateDraft("price", event.target.value)} /></Field>
-                    <Field label="Low at"><input required min={0} type="number" className={inputClassName} value={draft.lowStockQty} onChange={(event) => updateDraft("lowStockQty", event.target.value)} /></Field>
+                    <Field label="Price"><input min={0} step="0.01" inputMode="decimal" type="number" className={inputClassName} value={draft.price} onChange={(event) => updateDraft("price", event.target.value)} onBlur={(event) => updateDraft("price", normalizeNumericInput(event.target.value))} /></Field>
+                    <Field label="Low at"><input min={0} step={1} inputMode="numeric" type="number" className={inputClassName} value={draft.lowStockQty} onChange={(event) => updateDraft("lowStockQty", event.target.value)} onBlur={(event) => updateDraft("lowStockQty", normalizeNumericInput(event.target.value, true))} /></Field>
                     <Field label={isEditing ? "Current Stock" : "Starting Stock"}>
-                      <input required min={0} type="number" className={inputClassName} value={draft.openingStock} onChange={(event) => updateDraft("openingStock", event.target.value)} />
+                      <input min={0} step={1} inputMode="numeric" type="number" className={inputClassName} value={draft.openingStock} onChange={(event) => updateDraft("openingStock", event.target.value)} onBlur={(event) => updateDraft("openingStock", normalizeNumericInput(event.target.value, true))} />
                       {isEditing ? (
                         <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-100">
                           <div className={`h-full rounded-full ${stockProgressColor(Number(draft.openingStock || 0), Number(draft.lowStockQty || 0))}`} style={{ width: `${stockProgress(Number(draft.openingStock || 0), Number(draft.lowStockQty || 0))}%` }} />
@@ -1243,10 +1245,10 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                     <details className="rounded-xl border border-red-200 bg-red-50 p-3 2xl:col-span-3">
                       <summary className="cursor-pointer text-sm font-black text-red-700">Danger zone</summary>
                       <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <p className="text-sm font-semibold text-red-700/80">Delete this SKU so it no longer appears in active inventory views.</p>
+                        <p className="text-sm font-semibold text-red-700/80">Archive this SKU so it leaves active inventory while its stock and activity history remain available.</p>
                         <Button type="button" variant="destructive" disabled={isPending} onClick={archiveCurrentSku}>
                           <Trash2 className="size-4" />
-                          Delete SKU
+                          Archive SKU
                         </Button>
                       </div>
                     </details>
@@ -1292,9 +1294,9 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-5">
                               <Field label="Type Name"><input required className={inputClassName} value={item.name} onChange={(event) => updateManagedVariationItem(item.skuId, "name", event.target.value)} placeholder="Tuna 12x85g" /></Field>
                               <Field label="SKU ID"><input required className={inputClassName} value={item.skuCode} onChange={(event) => updateManagedVariationItem(item.skuId, "skuCode", event.target.value.toUpperCase())} placeholder="WWP-TUNA-12" /></Field>
-                              <Field label="Price"><input required min={0} step="0.01" type="number" className={inputClassName} value={item.price} onChange={(event) => updateManagedVariationItem(item.skuId, "price", event.target.value)} /></Field>
-                              <Field label="Current Stock"><input required min={0} type="number" className={inputClassName} value={item.currentStock} onChange={(event) => updateManagedVariationItem(item.skuId, "currentStock", event.target.value)} /></Field>
-                              <Field label="Low at"><input required min={0} type="number" className={inputClassName} value={item.lowStockQty} onChange={(event) => updateManagedVariationItem(item.skuId, "lowStockQty", event.target.value)} /></Field>
+                              <Field label="Price"><input min={0} step="0.01" inputMode="decimal" type="number" className={inputClassName} value={item.price} onChange={(event) => updateManagedVariationItem(item.skuId, "price", event.target.value)} onBlur={(event) => updateManagedVariationItem(item.skuId, "price", normalizeNumericInput(event.target.value))} /></Field>
+                              <Field label="Current Stock"><input min={0} step={1} inputMode="numeric" type="number" className={inputClassName} value={item.currentStock} onChange={(event) => updateManagedVariationItem(item.skuId, "currentStock", event.target.value)} onBlur={(event) => updateManagedVariationItem(item.skuId, "currentStock", normalizeNumericInput(event.target.value, true))} /></Field>
+                              <Field label="Low at"><input min={0} step={1} inputMode="numeric" type="number" className={inputClassName} value={item.lowStockQty} onChange={(event) => updateManagedVariationItem(item.skuId, "lowStockQty", event.target.value)} onBlur={(event) => updateManagedVariationItem(item.skuId, "lowStockQty", normalizeNumericInput(event.target.value, true))} /></Field>
                             </div>
                           </div>
                         ))}
@@ -1330,9 +1332,9 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                             <Field label="Type Name"><input data-tutorial="sku-type-name" required className={inputClassName} value={item.name} onChange={(event) => updateVariationItem(item.clientId, "name", event.target.value)} placeholder="Junior Tuna x28" /></Field>
                             <Field label="SKU ID"><input required className={inputClassName} value={item.skuCode} onChange={(event) => updateVariationItem(item.clientId, "skuCode", event.target.value.toUpperCase())} placeholder="FOOD-TUNA-X28" /></Field>
-                            <Field label="Price"><input required min={0} step="0.01" type="number" className={inputClassName} value={item.price} onChange={(event) => updateVariationItem(item.clientId, "price", event.target.value)} /></Field>
-                            <Field label="Starting Stock"><input required min={0} type="number" className={inputClassName} value={item.openingStock} onChange={(event) => updateVariationItem(item.clientId, "openingStock", event.target.value)} /></Field>
-                            <Field label="Low at"><input required min={0} type="number" className={inputClassName} value={item.lowStockQty} onChange={(event) => updateVariationItem(item.clientId, "lowStockQty", event.target.value)} /></Field>
+                            <Field label="Price"><input min={0} step="0.01" inputMode="decimal" type="number" className={inputClassName} value={item.price} onChange={(event) => updateVariationItem(item.clientId, "price", event.target.value)} onBlur={(event) => updateVariationItem(item.clientId, "price", normalizeNumericInput(event.target.value))} /></Field>
+                            <Field label="Starting Stock"><input min={0} step={1} inputMode="numeric" type="number" className={inputClassName} value={item.openingStock} onChange={(event) => updateVariationItem(item.clientId, "openingStock", event.target.value)} onBlur={(event) => updateVariationItem(item.clientId, "openingStock", normalizeNumericInput(event.target.value, true))} /></Field>
+                            <Field label="Low at"><input min={0} step={1} inputMode="numeric" type="number" className={inputClassName} value={item.lowStockQty} onChange={(event) => updateVariationItem(item.clientId, "lowStockQty", event.target.value)} onBlur={(event) => updateVariationItem(item.clientId, "lowStockQty", normalizeNumericInput(event.target.value, true))} /></Field>
                             {variationDraft.addVariationImages ? (
                               <label className="grid gap-2 text-sm font-black tracking-[-0.02em] text-zinc-700 md:col-span-2 xl:col-span-3">
                                 Type Image
@@ -1352,7 +1354,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
               )}
 
               <div className="mt-7 flex flex-col-reverse items-start gap-3 sm:flex-row sm:items-center sm:justify-end">
-                <Button type="button" variant="outline" onClick={() => setIsOpen(false)}>{createMode === "variation" && variationDraft.variationGroupId ? "Discard Changes" : "Cancel"}</Button>
+                <Button type="button" variant="outline" disabled={isPending || isPhotoPending} onClick={() => setIsOpen(false)}>{createMode === "variation" && variationDraft.variationGroupId ? "Discard Changes" : "Cancel"}</Button>
                 <Button data-tutorial="sku-modal-review" disabled={isPending}>
                   {isPending ? <LumaSpinner label="Saving SKU" /> : createMode === "variation" && variationDraft.variationGroupId ? <Save className="size-5" /> : isEditing ? <Save className="size-5" /> : <Plus className="size-5" />}
                   {isPending ? "Saving..." : isEditing ? "Review & Save SKU" : createMode === "variation" ? (variationDraft.variationGroupId ? "Save Bundle Changes" : "Create SKU Types") : "Review & Create SKU"}
@@ -1371,6 +1373,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
           records={confirmation.records}
           error={confirmError}
           confirmLabel={confirmation.confirmLabel}
+          confirmVariant={confirmation.confirmVariant}
           onCancel={() => {
             confirmation.onCancel?.();
             setConfirmation(null);

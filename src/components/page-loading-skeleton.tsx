@@ -1,4 +1,8 @@
-import { AppSidebar } from "@/components/app-sidebar";
+"use client";
+
+import { useEffect, useState } from "react";
+
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type SkeletonPage = "stock" | "partner" | "restock" | "skus" | "reports" | "tutorial";
@@ -76,20 +80,58 @@ function ChartSkeleton() {
   );
 }
 
+function NavigationSkeleton() {
+  return (
+    <>
+      <aside aria-hidden="true" className="hidden border-r border-border bg-white lg:fixed lg:inset-y-0 lg:left-0 lg:z-30 lg:flex lg:w-[242px] lg:flex-col lg:px-4 lg:py-8">
+        <Skeleton className="mx-auto mt-4 h-9 w-32 rounded-xl" />
+        <Skeleton className="mt-12 h-12 w-full rounded-xl" />
+        <div className="mt-6 grid gap-4">
+          {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-14 w-full rounded-xl" />)}
+        </div>
+      </aside>
+      <div aria-hidden="true" className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-40 grid grid-cols-6 gap-1 rounded-3xl border border-border bg-white/95 p-1.5 shadow-2xl shadow-black/15 lg:hidden">
+        {Array.from({ length: 6 }, (_, index) => <Skeleton key={index} className="h-14 rounded-2xl" />)}
+      </div>
+    </>
+  );
+}
+
 export function PageLoadingSkeleton({ page }: { page: SkeletonPage }) {
+  const [timedOut, setTimedOut] = useState(false);
   const copy = pageCopy[page];
   const showChart = page === "reports";
   const showStats = page === "stock" || page === "partner" || page === "skus";
 
+  useEffect(() => {
+    const timer = window.setTimeout(() => setTimedOut(true), 10_000);
+    return () => window.clearTimeout(timer);
+  }, []);
+
+  if (timedOut) {
+    return (
+      <main className="grid min-h-screen place-items-center bg-zinc-50 px-5 text-black">
+        <section role="alert" aria-live="assertive" className="w-full max-w-lg rounded-3xl border border-zinc-200 bg-white p-7 text-center shadow-sm sm:p-10">
+          <p className="text-xs font-black uppercase tracking-[0.16em] text-zinc-400">Loading timed out</p>
+          <h1 className="mt-2 text-3xl font-black tracking-[-0.05em]">{copy.title} could not load</h1>
+          <p className="mt-3 text-sm font-semibold text-zinc-600">Check your connection and reload this page. Your saved data has not been changed.</p>
+          <Button type="button" onClick={() => window.location.reload()} className="mt-6 h-11 rounded-xl bg-black px-6 font-black text-white hover:bg-black">
+            Reload
+          </Button>
+        </section>
+      </main>
+    );
+  }
+
   return (
-    <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
+    <main aria-busy="true" className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
-        <AppSidebar active={page} role="admin" />
+        <NavigationSkeleton />
 
         <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <header className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-xs font-black uppercase tracking-[0.18em] text-zinc-400">Loading</p>
+              <p role="status" aria-live="polite" className="text-xs font-black uppercase tracking-[0.18em] text-zinc-400">Loading…</p>
               <h1 className="mt-1 text-2xl font-black tracking-[-0.055em] sm:text-[44px]">{copy.title}</h1>
               <p className="mt-1.5 max-w-xl text-xs font-semibold text-zinc-500 sm:mt-2 sm:text-sm">{copy.description}</p>
             </div>

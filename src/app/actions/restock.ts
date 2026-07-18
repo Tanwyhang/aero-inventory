@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 
+import { safeActionError } from "@/lib/action-error";
 import { requireMembership } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import type { RestockStatus } from "@/types/database";
@@ -22,6 +23,11 @@ const updateRestockStatusSchema = z.object({
 
 export async function createRestockRequestAction(input: z.input<typeof createRestockRequestSchema>) {
   const membership = await requireMembership();
+
+  if (membership.role === "viewer") {
+    return { ok: false, error: "Viewer access is read-only." };
+  }
+
   const parsed = createRestockRequestSchema.safeParse(input);
 
   if (!parsed.success) {
@@ -29,19 +35,8 @@ export async function createRestockRequestAction(input: z.input<typeof createRes
   }
 
   const supabase = await createClient();
-  const { data: inventoryRow, error: inventoryError } = await supabase
-    .from("inventory_levels")
-    .select("id")
-    .eq("organization_id", membership.organization_id)
-    .eq("sku_id", parsed.data.skuId)
-    .eq("location_id", parsed.data.locationId)
-    .maybeSingle();
-
-  if (inventoryError || !inventoryRow) {
-    return { ok: false, error: "Inventory row is not available in the selected workspace." };
-  }
-
   const { error } = await supabase.rpc("create_restock_request", {
+    p_organization_id: membership.organization_id,
     p_sku_id: parsed.data.skuId,
     p_location_id: parsed.data.locationId,
     p_requested_qty: parsed.data.requestedQty ?? null,
@@ -49,7 +44,7 @@ export async function createRestockRequestAction(input: z.input<typeof createRes
   });
 
   if (error) {
-    return { ok: false, error: error.message };
+    return { ok: false, error: safeActionError(error, "createRestockRequestAction.rpc", "Restock request could not be saved.") };
   }
 
   revalidatePath("/");
@@ -73,25 +68,15 @@ export async function updateRestockStatusAction(input: { requestId: string; stat
   }
 
   const supabase = await createClient();
-  const { data: requestRow, error: requestError } = await supabase
-    .from("restock_requests")
-    .select("id")
-    .eq("id", parsed.data.requestId)
-    .eq("organization_id", membership.organization_id)
-    .maybeSingle();
-
-  if (requestError || !requestRow) {
-    return { ok: false, error: "Restock request is not available in the selected workspace." };
-  }
-
   const { error } = await supabase.rpc("update_restock_request_status", {
+    p_organization_id: membership.organization_id,
     p_request_id: parsed.data.requestId,
     p_status: parsed.data.status,
     p_comment: parsed.data.comment || null,
   });
 
   if (error) {
-    return { ok: false, error: error.message };
+    return { ok: false, error: safeActionError(error, "updateRestockStatusAction.rpc", "Restock status could not be updated.") };
   }
 
   revalidatePath("/");

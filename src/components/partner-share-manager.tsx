@@ -215,22 +215,25 @@ export function PartnerShareManager({
   }
 
   async function execute(title: string, action: () => Promise<{ ok: boolean; error?: string }>, success: string) {
+    if (isPending) return;
     setIsPending(true);
     setConfirmError(null);
-    const result = await action();
-    setIsPending(false);
+    try {
+      const result = await action();
+      if (!result.ok) throw new Error("This action could not be completed. Refresh and try again.");
 
-    if (!result.ok) {
-      const message = result.error ?? "Action failed.";
+      toast.success(success);
+      setConfirmation(null);
+      closeModal();
+      router.refresh();
+    } catch (actionError) {
+      const message = actionError instanceof Error ? actionError.message : "This action could not be completed. Check your connection and try again.";
       setConfirmError(message);
       toast.error(title, { description: message });
       throw new Error(message);
+    } finally {
+      setIsPending(false);
     }
-
-    toast.success(success);
-    setConfirmation(null);
-    closeModal();
-    router.refresh();
   }
 
   function ask(title: string, description: string, records: ConfirmationRecord[], onConfirm: () => Promise<void>) {
@@ -304,11 +307,15 @@ export function PartnerShareManager({
       return;
     }
 
-    await execute(
-      "Add product failed",
-      () => addPartnerShareItemAction({ sheetId: selectedSheet.id, skuId: row.sku_id, shareQty: 1, remark: "" }),
-      "Product added",
-    );
+    try {
+      await execute(
+        "Add product failed",
+        () => addPartnerShareItemAction({ sheetId: selectedSheet.id, skuId: row.sku_id, shareQty: 1, remark: "" }),
+        "Product added",
+      );
+    } catch {
+      // execute already restores pending state and shows an actionable error.
+    }
   }
 
   function submitInlineShareQty(item: PartnerShareItem) {
@@ -389,25 +396,45 @@ export function PartnerShareManager({
   }
 
   async function copyWhatsApp() {
-    if (!selectedDetail) return;
-    await navigator.clipboard.writeText(toWhatsAppText(selectedDetail, shareQtyForItem));
-    const result = await recordPartnerShareOutputAction({ sheetId: selectedDetail.sheet.id, outputType: "whatsapp_copy" });
-    if (!result.ok) toast.error("Copy audit failed", { description: result.error });
-    toast.success("WhatsApp text copied");
+    if (!selectedDetail || isPending) return;
+    setIsPending(true);
+    try {
+      await navigator.clipboard.writeText(toWhatsAppText(selectedDetail, shareQtyForItem));
+      const result = await recordPartnerShareOutputAction({ sheetId: selectedDetail.sheet.id, outputType: "whatsapp_copy" });
+      if (!result.ok) {
+        toast.warning("WhatsApp text copied", { description: "The copy history could not be recorded." });
+        return;
+      }
+      toast.success("WhatsApp text copied");
+    } catch {
+      toast.error("WhatsApp copy failed", { description: "Allow clipboard access, then try again." });
+    } finally {
+      setIsPending(false);
+    }
   }
 
   async function downloadExcel() {
-    if (!selectedDetail) return;
-    await exportExcel(selectedDetail, shareQtyForItem, liveStockForItem);
-    const result = await recordPartnerShareOutputAction({ sheetId: selectedDetail.sheet.id, outputType: "excel_export" });
-    if (!result.ok) toast.error("Export audit failed", { description: result.error });
-    else toast.success("Excel exported");
+    if (!selectedDetail || isPending) return;
+    setIsPending(true);
+    try {
+      await exportExcel(selectedDetail, shareQtyForItem, liveStockForItem);
+      const result = await recordPartnerShareOutputAction({ sheetId: selectedDetail.sheet.id, outputType: "excel_export" });
+      if (!result.ok) {
+        toast.warning("Excel exported", { description: "The export history could not be recorded." });
+        return;
+      }
+      toast.success("Excel exported");
+    } catch {
+      toast.error("Excel export failed", { description: "No file was created. Try again." });
+    } finally {
+      setIsPending(false);
+    }
   }
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(11rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
-        <AppSidebar active="partner" role={effectiveRole} restockCount={restockCount} showStaffToggle={isAdmin} isViewingAsStaff={viewAsStaff} onToggleStaffView={toggleStaffView} />
+        <AppSidebar active="partner" role={effectiveRole} workspaceName={membership.organization_name} restockCount={restockCount} showStaffToggle={isAdmin} isViewingAsStaff={viewAsStaff} onToggleStaffView={toggleStaffView} />
         <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <header className="flex flex-row items-center justify-between gap-3">
             <div>
@@ -501,8 +528,8 @@ export function PartnerShareManager({
                         <span>Auto-Sync with Main Store SKU</span>
                       </label>
                       {canManage && selectedDetail.sheet.status !== "completed" ? <Button type="button" data-tutorial="partner-add-product" onClick={openItemModal} className="h-8 rounded-lg bg-black px-2.5 text-[11px] font-bold text-white hover:bg-black"><PackagePlus className="size-3.5" />Add Product</Button> : null}
-                      <Button type="button" variant="outline" onClick={copyWhatsApp} className="h-8 rounded-lg bg-white px-2.5 text-[11px] font-bold hover:bg-white"><Clipboard className="size-3.5" />WhatsApp</Button>
-                      <Button type="button" variant="outline" onClick={downloadExcel} className="h-8 rounded-lg bg-white px-2.5 text-[11px] font-bold hover:bg-white"><Download className="size-3.5" />Excel</Button>
+                      <Button type="button" variant="outline" onClick={copyWhatsApp} disabled={isPending} className="h-8 rounded-lg bg-white px-2.5 text-[11px] font-bold hover:bg-white"><Clipboard className="size-3.5" />WhatsApp</Button>
+                      <Button type="button" variant="outline" onClick={downloadExcel} disabled={isPending} className="h-8 rounded-lg bg-white px-2.5 text-[11px] font-bold hover:bg-white"><Download className="size-3.5" />Excel</Button>
                       {canManage && selectedDetail.sheet.status === "draft" ? <Button type="button" onClick={() => changeStatus("confirmed")} className="h-8 rounded-lg bg-blue-600 px-2.5 text-[11px] text-white hover:bg-blue-600"><Check className="size-3.5" />Confirm</Button> : null}
                       {canManage && selectedDetail.sheet.status === "confirmed" ? <Button type="button" onClick={() => changeStatus("sent")} className="h-8 rounded-lg bg-orange px-2.5 text-[11px] text-white hover:bg-orange"><Send className="size-3.5" />Mark Sent</Button> : null}
                       {canManage && selectedDetail.sheet.status === "sent" ? <Button type="button" onClick={() => changeStatus("completed")} className="h-8 rounded-lg bg-lime px-2.5 text-[11px] text-black hover:bg-lime"><Check className="size-3.5" />Complete</Button> : null}
@@ -628,14 +655,14 @@ export function PartnerShareManager({
       </div>
 
       {modal ? (
-        <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={closeModal}>
+        <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={() => { if (!isPending) closeModal(); }}>
           <FluidEntrySurface data-tutorial="partner-modal" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-5" wrapperClassName="w-full max-w-[22rem] sm:max-w-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h3 className="text-2xl font-black tracking-[-0.05em]">{modal === "partner" ? "Partner" : modal === "sheet" ? "Share Sheet" : modal === "edit-item" ? "Edit Product" : "Add Product"}</h3>
                 <p className="mt-1 text-sm font-bold text-zinc-500">{modal === "item" ? "Tap any SKU below to add it instantly with 1 pc." : "Every save requires confirmation."}</p>
               </div>
-              <button type="button" onClick={closeModal} className="grid size-10 place-items-center rounded-xl border border-border" aria-label="Close partner form"><X className="size-5" /></button>
+              <button type="button" onClick={closeModal} disabled={isPending} className="grid size-10 place-items-center rounded-xl border border-border disabled:opacity-50" aria-label="Close partner form"><X className="size-5" /></button>
             </div>
             {modal === "partner" ? (
               <form onSubmit={submitPartner} className="mt-5 grid gap-4">
