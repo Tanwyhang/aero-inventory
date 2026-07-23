@@ -23,7 +23,7 @@ import { adjustStockAction } from "@/app/actions/stock";
 import { createRestockRequestAction, updateRestockStatusAction } from "@/app/actions/restock";
 import { signOut } from "@/app/actions/auth";
 import { AppSidebar } from "@/components/app-sidebar";
-import { ConfirmSlideSheet } from "@/components/confirm-slide-sheet";
+import { ConfirmActionSheet } from "@/components/confirm-action-sheet";
 import { FluidEntrySurface } from "@/components/fluid-entry-surface";
 import { StoreIdentityEditor } from "@/components/store-identity-editor";
 import { Button } from "@/components/ui/button";
@@ -84,6 +84,7 @@ export function ProductThumb({ label, photoUrl, eager = false }: { label: string
             aria-hidden="true"
             fill
             loading={eager ? "eager" : "lazy"}
+            quality={50}
             sizes="80px"
             className="scale-125 object-cover opacity-20 blur-2xl saturate-125"
             style={{ WebkitMaskImage: washMask, maskImage: washMask }}
@@ -94,6 +95,7 @@ export function ProductThumb({ label, photoUrl, eager = false }: { label: string
             aria-hidden="true"
             fill
             loading={eager ? "eager" : "lazy"}
+            quality={65}
             sizes="80px"
             className="object-cover"
             style={{ WebkitMaskImage: fadeMask, maskImage: fadeMask }}
@@ -505,7 +507,7 @@ function PingDialog({ row, onClose }: { row: InventoryRow; onClose: () => void }
         <p className="mt-3 text-center text-xs font-bold text-white/80">Click anywhere to close</p>
       </div>
       {isConfirming ? (
-        <ConfirmSlideSheet
+        <ConfirmActionSheet
           title="Confirm Admin Ping"
           description="This restock request will be recorded for admin follow-up."
           records={[
@@ -635,7 +637,7 @@ export function RestockQueue({ requests, rows }: { requests: RestockRequestRow[]
         </div>
       )}
       {confirmation ? (
-        <ConfirmSlideSheet
+        <ConfirmActionSheet
           title={confirmation.label}
           description="This restock status change will be recorded for audit and reporting."
           records={[
@@ -681,7 +683,7 @@ function StockRowCard({
         <div className="flex items-start gap-2">
           <div className="relative size-9 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-white ring-1 ring-black/5 sm:size-10">
             {row.photo_url ? (
-              <Image src={row.photo_url} alt={row.product_name} fill loading={!nested && index === 0 ? "eager" : "lazy"} sizes="64px" className="object-cover" />
+              <Image src={row.photo_url} alt={row.product_name} fill loading={!nested && index === 0 ? "eager" : "lazy"} quality={65} sizes="64px" className="object-cover" />
             ) : (
               <div className="grid size-full place-items-center bg-lime text-2xl font-black text-black/80">{row.product_name.slice(0, 1)}</div>
             )}
@@ -853,7 +855,7 @@ function StockGroupCard({
           <div className="flex min-w-0 gap-2.5">
             <div className="relative size-14 shrink-0 overflow-hidden rounded-lg border border-zinc-200 bg-white ring-1 ring-black/5">
               {entry.photoUrl ? (
-                <Image src={entry.photoUrl} alt={entry.productName} fill loading={index === 0 ? "eager" : "lazy"} sizes="56px" className="object-cover" />
+                <Image src={entry.photoUrl} alt={entry.productName} fill loading={index === 0 ? "eager" : "lazy"} quality={65} sizes="56px" className="object-cover" />
               ) : (
                 <div className="grid size-full place-items-center bg-lime text-2xl font-black text-black/80">{entry.productName.slice(0, 1)}</div>
               )}
@@ -899,7 +901,7 @@ function StockGroupCard({
             <div className="flex min-w-0 items-center gap-2.5">
               <div className="relative size-10 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-white ring-1 ring-black/5">
                 {entry.photoUrl ? (
-                  <Image src={entry.photoUrl} alt={entry.productName} fill loading={index === 0 ? "eager" : "lazy"} sizes="40px" className="object-cover" />
+                  <Image src={entry.photoUrl} alt={entry.productName} fill loading={index === 0 ? "eager" : "lazy"} quality={60} sizes="40px" className="object-cover" />
                 ) : (
                   <div className="grid size-full place-items-center bg-lime text-lg font-black text-black/80">{entry.productName.slice(0, 1)}</div>
                 )}

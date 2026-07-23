@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { clearSelectedWorkspaceCookie, getSelectedWorkspaceId, requireMembership, setSelectedWorkspaceCookie } from "@/lib/auth";
+import { revalidateWorkspaceData } from "@/lib/cached-data";
 import { createClient } from "@/lib/supabase/server";
 
 const workspaceSchema = z.object({
@@ -124,6 +125,7 @@ export async function createWorkspaceAction(formData: FormData) {
   }
 
   await setSelectedWorkspaceCookie(data);
+  revalidateWorkspaceData(data);
   revalidateWorkspaceRoutes();
   redirect("/");
 }
@@ -140,6 +142,7 @@ export async function acceptWorkspaceInviteAction(formData: FormData) {
   }
 
   await setSelectedWorkspaceCookie(data);
+  revalidateWorkspaceData(data);
   revalidateWorkspaceRoutes();
   redirect("/");
 }
@@ -171,6 +174,7 @@ export async function updateWorkspaceIdentityAction(formData: FormData) {
     redirect("/workspaces?error=workspace-action");
   }
 
+  revalidateWorkspaceData(parsed.data.organizationId);
   revalidateWorkspaceRoutes();
   redirect(parsed.data.returnTo);
 }
@@ -202,6 +206,7 @@ export async function deleteWorkspaceAction(formData: FormData) {
     else await clearSelectedWorkspaceCookie();
   }
 
+  revalidateWorkspaceData(parsed.data.organizationId);
   revalidateWorkspaceRoutes();
   redirect("/workspaces");
 }
@@ -230,6 +235,7 @@ export async function inviteWorkspaceMemberAction(formData: FormData) {
   }
 
   const invite = data[0];
+  revalidateWorkspaceData(membership.organization_id);
   revalidatePath("/workspaces");
   redirect(`/workspaces?invite=${encodeURIComponent(invite.token)}&email=${encodeURIComponent(invite.email)}`);
 }
@@ -252,6 +258,7 @@ export async function updateWorkspaceMemberRoleAction(formData: FormData) {
     logWorkspaceActionError("update-member-role", error, { workspaceId: membership.organization_id, userId: parsed.data.userId });
     redirect(`/workspaces?error=${workspaceRpcErrorCode(error, "member-action")}`);
   }
+  revalidateWorkspaceData(membership.organization_id);
   revalidatePath("/workspaces");
   redirect("/workspaces");
 }
@@ -274,6 +281,7 @@ export async function updateWorkspaceMemberStatusAction(formData: FormData) {
     logWorkspaceActionError("update-member-status", error, { workspaceId: membership.organization_id, userId: parsed.data.userId });
     redirect(`/workspaces?error=${workspaceRpcErrorCode(error, "member-action")}`);
   }
+  revalidateWorkspaceData(membership.organization_id);
   revalidatePath("/workspaces");
   redirect("/workspaces");
 }
@@ -292,6 +300,7 @@ export async function revokeWorkspaceInviteAction(formData: FormData) {
     redirect("/workspaces?error=invite-action");
   }
 
+  revalidateWorkspaceData(membership.organization_id);
   revalidatePath("/workspaces");
   redirect("/workspaces");
 }

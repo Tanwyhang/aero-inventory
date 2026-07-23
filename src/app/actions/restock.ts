@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { safeActionError } from "@/lib/action-error";
 import { requireMembership } from "@/lib/auth";
+import { revalidateWorkspaceData } from "@/lib/cached-data";
 import { createClient } from "@/lib/supabase/server";
 import type { RestockStatus } from "@/types/database";
 
@@ -47,6 +48,7 @@ export async function createRestockRequestAction(input: z.input<typeof createRes
     return { ok: false, error: safeActionError(error, "createRestockRequestAction.rpc", "Restock request could not be saved.") };
   }
 
+  revalidateWorkspaceData(membership.organization_id);
   revalidatePath("/");
   revalidatePath("/restock");
   revalidatePath("/reports");
@@ -79,6 +81,7 @@ export async function updateRestockStatusAction(input: { requestId: string; stat
     return { ok: false, error: safeActionError(error, "updateRestockStatusAction.rpc", "Restock status could not be updated.") };
   }
 
+  revalidateWorkspaceData(membership.organization_id);
   revalidatePath("/");
   revalidatePath("/restock");
   revalidatePath("/reports");

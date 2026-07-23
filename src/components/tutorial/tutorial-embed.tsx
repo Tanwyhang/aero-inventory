@@ -1,14 +1,10 @@
 "use client";
 
 import { useEffect } from "react";
+import dynamic from "next/dynamic";
 
 import { AppSidebar } from "@/components/app-sidebar";
-import { AdminSkuManager } from "@/components/admin-sku-manager";
 import { FluidEntrySurface } from "@/components/fluid-entry-surface";
-import { InventoryDashboard, RestockQueue } from "@/components/inventory-dashboard";
-import { PartnerShareManager } from "@/components/partner-share-manager";
-import { ReportsActivityLists } from "@/components/reports-activity-lists";
-import { ReportsAreaChart } from "@/components/reports-area-chart";
 import { TutorialGuideOverlay } from "@/components/tutorial/tutorial-guide-overlay";
 import { getLesson, type TutorialLessonId } from "@/components/tutorial/tutorial-lessons";
 import {
@@ -25,6 +21,35 @@ import {
   demoSkuRows,
   demoStaffRows,
 } from "@/components/tutorial/tutorial-demo-data";
+
+function ReplicaFallback() {
+  return <div aria-busy="true" className="min-h-screen animate-pulse bg-zinc-100" />;
+}
+
+const InventoryDashboard = dynamic(
+  () => import("@/components/inventory-dashboard").then((module) => module.InventoryDashboard),
+  { loading: ReplicaFallback },
+);
+const RestockQueue = dynamic(
+  () => import("@/components/inventory-dashboard").then((module) => module.RestockQueue),
+  { loading: ReplicaFallback },
+);
+const AdminSkuManager = dynamic(
+  () => import("@/components/admin-sku-manager").then((module) => module.AdminSkuManager),
+  { loading: ReplicaFallback },
+);
+const PartnerShareManager = dynamic(
+  () => import("@/components/partner-share-manager").then((module) => module.PartnerShareManager),
+  { loading: ReplicaFallback },
+);
+const ReportsActivityLists = dynamic(
+  () => import("@/components/reports-activity-lists").then((module) => module.ReportsActivityLists),
+  { loading: ReplicaFallback },
+);
+const ReportsAreaChart = dynamic(
+  () => import("@/components/reports-area-chart").then((module) => module.ReportsAreaChart),
+  { loading: ReplicaFallback },
+);
 
 function stopRealInteraction(event: React.SyntheticEvent<HTMLElement>) {
   const target = event.target as HTMLElement | null;

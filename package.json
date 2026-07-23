@@ -9,6 +9,9 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@radix-ui/react-collapsible": "^1.1.14",
+    "@radix-ui/react-dialog": "^1.1.14",
+    "@radix-ui/react-popover": "^1.1.17",
     "@radix-ui/react-slot": "latest",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
@@ -17,11 +20,12 @@
     "clsx": "latest",
     "lucide-react": "^0.468.0",
     "motion": "latest",
-    "next": "latest",
+    "next": "15.5.9",
     "radix-ui": "^1.6.0",
     "react": "latest",
     "react-dom": "latest",
     "recharts": "^3.8.1",
+    "sharp": "0.34.5",
     "sonner": "^2.0.7",
     "tailwind-merge": "latest",
     "tailwindcss": "latest",

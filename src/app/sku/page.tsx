@@ -1,9 +1,10 @@
-import { AdminSkuManager } from "@/components/admin-sku-manager";
 import { FluidEntrySurface } from "@/components/fluid-entry-surface";
-import { requireMembership } from "@/lib/auth";
+import { LazyAdminSkuManager } from "@/components/lazy-page-components";
+import { redirect } from "next/navigation";
+
+import { getRequestAccessToken, requireMembership } from "@/lib/auth";
+import { getCachedProductCategories, getCachedRestockRequests, getCachedSkuManagerRows } from "@/lib/cached-data";
 import { withSignedSkuPhotoUrls } from "@/lib/sku-photos";
-import { createClient } from "@/lib/supabase/server";
-import type { AdminSkuManagerRow } from "@/types/database";
 
 export default async function SkuPage() {
   const membership = await requireMembership();
@@ -19,32 +20,16 @@ export default async function SkuPage() {
     );
   }
 
-  const supabase = await createClient();
-  const [{ data, error }, { data: restockRequests, error: restockError }, { data: categories, error: categoriesError }] = await Promise.all([
-    supabase.rpc("get_admin_sku_manager_rows", { p_organization_id: membership.organization_id }),
-    supabase.rpc("get_admin_restock_requests", { p_organization_id: membership.organization_id }),
-    supabase
-      .from("product_categories")
-      .select("id, name")
-      .eq("organization_id", membership.organization_id)
-      .is("archived_at", null)
-      .order("name", { ascending: true }),
+  const accessToken = await getRequestAccessToken();
+  if (!accessToken) redirect("/login");
+
+  const [data, restockRequests, categories] = await Promise.all([
+    getCachedSkuManagerRows(membership.organization_id, accessToken),
+    getCachedRestockRequests(membership.organization_id, accessToken),
+    getCachedProductCategories(membership.organization_id, accessToken),
   ]);
 
-  if (error || restockError || categoriesError) {
-    console.error("SKU manager data failed to load", {
-      workspaceId: membership.organization_id,
-      skuCode: error?.code ?? null,
-      restockCode: restockError?.code ?? null,
-      categoriesCode: categoriesError?.code ?? null,
-      skuMessage: error?.message ?? null,
-      restockMessage: restockError?.message ?? null,
-      categoriesMessage: categoriesError?.message ?? null,
-    });
-    throw new Error("Unable to load SKUs.");
-  }
+  const rows = await withSignedSkuPhotoUrls(data);
 
-  const rows = await withSignedSkuPhotoUrls((data ?? []) as AdminSkuManagerRow[]);
-
-  return <AdminSkuManager membership={membership} rows={rows} categories={categories ?? []} restockCount={(restockRequests ?? []).length} />;
+  return <LazyAdminSkuManager membership={membership} rows={rows} categories={categories} restockCount={restockRequests.length} />;
 }

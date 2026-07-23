@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 import Image from "next/image";
 
-import { signInWithGoogle } from "@/app/actions/auth";
+import { signInWithGoogle, signInWithPassword } from "@/app/actions/auth";
 import { FluidEntrySurface } from "@/components/fluid-entry-surface";
 import { Button } from "@/components/ui/button";
 import { getCurrentMembership } from "@/lib/auth";
-import aeroLogo from "../../../design/logohorizontal.png";
+import { isPasswordLoginEnabled } from "@/lib/env";
+import aeroLogo from "../../../design/logohorizontal.webp";
 
 function GoogleMark() {
   return (
@@ -21,6 +22,7 @@ function GoogleMark() {
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const membership = await getCurrentMembership();
   const params = await searchParams;
+  const passwordLoginEnabled = isPasswordLoginEnabled();
 
   if (membership) {
     redirect("/workspaces");
@@ -33,7 +35,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
         <Image src={aeroLogo} alt="Aero" className="mx-auto h-auto w-full max-w-[420px]" priority />
         {params.error ? (
           <div className="mt-5 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-            Google sign-in failed. Check your OAuth settings and try again.
+            {params.error === "password"
+              ? "Email or password is incorrect, or the account is not enabled for password login."
+              : params.error === "password-disabled"
+                ? "Password login is disabled for this deployment."
+                : "Google sign-in failed. Check your OAuth settings and try again."}
           </div>
         ) : null}
         <form action={signInWithGoogle} className="mt-7">
@@ -42,6 +48,29 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             Continue with Google
           </Button>
         </form>
+        {passwordLoginEnabled ? (
+          <form action={signInWithPassword} className="mt-5 grid gap-3 border-t border-zinc-200 pt-5">
+            <input
+              required
+              name="email"
+              type="email"
+              autoComplete="email"
+              className="h-12 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-semibold outline-none focus:border-black focus:ring-2 focus:ring-lime"
+              placeholder="Test email"
+            />
+            <input
+              required
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              className="h-12 rounded-lg border border-zinc-200 bg-white px-4 text-sm font-semibold outline-none focus:border-black focus:ring-2 focus:ring-lime"
+              placeholder="Test password"
+            />
+            <Button className="h-12 w-full rounded-lg bg-black text-base font-bold text-white hover:bg-black">
+              Continue with test login
+            </Button>
+          </form>
+        ) : null}
         <p className="mt-5 text-sm font-medium text-zinc-500">
           If your account is not approved, ask the admin to invite you.
         </p>

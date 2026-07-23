@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { requireMembership } from "@/lib/auth";
 import { safeActionError } from "@/lib/action-error";
+import { revalidateWorkspaceData } from "@/lib/cached-data";
 import { normalizeWhatsAppNumber } from "@/lib/phone";
 import { createClient } from "@/lib/supabase/server";
 import type { PartnerShareStatus } from "@/types/database";
@@ -21,6 +22,10 @@ const sheetSchema = z.object({
   partnerId: z.string().uuid(),
   locationId: z.string().uuid(),
   shareDate: z.string().trim().min(1).max(20),
+});
+
+const updateSheetSchema = sheetSchema.extend({
+  sheetId: z.string().uuid(),
 });
 
 const addItemSchema = z.object({
@@ -51,7 +56,8 @@ const outputSchema = z.object({
   outputType: z.enum(["whatsapp_copy", "excel_export"]),
 });
 
-function revalidatePartnerShare() {
+function revalidatePartnerShare(organizationId: string) {
+  revalidateWorkspaceData(organizationId);
   revalidatePath("/");
   revalidatePath("/partner-share");
   revalidatePath("/reports");
@@ -107,7 +113,7 @@ export async function savePartnerAction(input: z.input<typeof partnerSchema>) {
   const { data, error } = await supabase.rpc(rpcName, args);
 
   if (error) return { ok: false, error: safeActionError(error, "partner-share.save-partner", "Partner could not be saved.") };
-  revalidatePartnerShare();
+  revalidatePartnerShare(membership.organization_id);
   return { ok: true, partnerId: data };
 }
 
@@ -126,7 +132,7 @@ export async function archivePartnerAction(partnerId: string) {
 
   const { error } = await supabase.rpc("admin_archive_partner", { p_partner_id: parsed.data });
   if (error) return { ok: false, error: safeActionError(error, "partner-share.archive-partner", "Partner could not be archived.") };
-  revalidatePartnerShare();
+  revalidatePartnerShare(membership.organization_id);
   return { ok: true };
 }
 
@@ -155,8 +161,58 @@ export async function createPartnerShareSheetAction(input: z.input<typeof sheetS
   });
 
   if (error) return { ok: false, error: safeActionError(error, "partner-share.create-sheet", "Share sheet could not be created.") };
-  revalidatePartnerShare();
+  revalidatePartnerShare(membership.organization_id);
   return { ok: true, sheetId: data };
+}
+
+export async function deleteDraftPartnerShareSheetAction(sheetId: string) {
+  const membership = await requireMembership();
+  const adminError = requireAdmin(membership.role);
+  if (adminError) return adminError;
+
+  const parsed = z.string().uuid().safeParse(sheetId);
+  if (!parsed.success) return { ok: false, error: "Choose a valid share sheet." };
+
+  if (!(await existsInSelectedWorkspace("partner_share_sheets", parsed.data, membership.organization_id))) {
+    return { ok: false, error: "Share sheet is not available in the selected workspace." };
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("admin_delete_draft_partner_share_sheet", { p_sheet_id: parsed.data });
+  if (error) return { ok: false, error: safeActionError(error, "partner-share.delete-sheet", "Draft share sheet could not be deleted.") };
+
+  revalidatePartnerShare(membership.organization_id);
+  return { ok: true };
+}
+
+export async function updatePartnerShareSheetAction(input: z.input<typeof updateSheetSchema>) {
+  const membership = await requireMembership();
+  const adminError = requireAdmin(membership.role);
+  if (adminError) return adminError;
+
+  const parsed = updateSheetSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, error: "Enter valid share-sheet details." };
+
+  const supabase = await createClient();
+  const [sheetExists, partnerExists, locationExists] = await Promise.all([
+    existsInSelectedWorkspace("partner_share_sheets", parsed.data.sheetId, membership.organization_id),
+    existsInSelectedWorkspace("partners", parsed.data.partnerId, membership.organization_id),
+    existsInSelectedWorkspace("locations", parsed.data.locationId, membership.organization_id),
+  ]);
+  if (!sheetExists || !partnerExists || !locationExists) {
+    return { ok: false, error: "Sheet, partner or location is not available in the selected workspace." };
+  }
+
+  const { error } = await supabase.rpc("admin_update_draft_partner_share_sheet", {
+    p_sheet_id: parsed.data.sheetId,
+    p_partner_id: parsed.data.partnerId,
+    p_location_id: parsed.data.locationId,
+    p_share_date: parsed.data.shareDate,
+  });
+  if (error) return { ok: false, error: safeActionError(error, "partner-share.update-sheet", "Draft share sheet could not be updated.") };
+
+  revalidatePartnerShare(membership.organization_id);
+  return { ok: true };
 }
 
 export async function addPartnerShareItemAction(input: z.input<typeof addItemSchema>) {
@@ -185,7 +241,7 @@ export async function addPartnerShareItemAction(input: z.input<typeof addItemSch
   });
 
   if (error) return { ok: false, error: safeActionError(error, "partner-share.add-item", "Product could not be added.") };
-  revalidatePartnerShare();
+  revalidatePartnerShare(membership.organization_id);
   return { ok: true };
 }
 
@@ -209,7 +265,7 @@ export async function updatePartnerShareItemAction(input: z.input<typeof updateI
   });
 
   if (error) return { ok: false, error: safeActionError(error, "partner-share.update-item", "Share item could not be updated.") };
-  revalidatePartnerShare();
+  revalidatePartnerShare(membership.organization_id);
   return { ok: true };
 }
 
@@ -228,7 +284,7 @@ export async function removePartnerShareItemAction(itemId: string) {
 
   const { error } = await supabase.rpc("admin_remove_partner_share_item", { p_item_id: parsed.data });
   if (error) return { ok: false, error: safeActionError(error, "partner-share.remove-item", "Product could not be removed.") };
-  revalidatePartnerShare();
+  revalidatePartnerShare(membership.organization_id);
   return { ok: true };
 }
 
@@ -251,7 +307,7 @@ export async function updatePartnerShareStatusAction(input: { sheetId: string; s
   });
 
   if (error) return { ok: false, error: safeActionError(error, "partner-share.update-status", "Share status could not be updated.") };
-  revalidatePartnerShare();
+  revalidatePartnerShare(membership.organization_id);
   return { ok: true };
 }
 
@@ -274,7 +330,7 @@ export async function updatePartnerShareAutoSyncAction(input: z.input<typeof aut
   });
 
   if (error) return { ok: false, error: safeActionError(error, "partner-share.auto-sync", "Auto-sync could not be updated.") };
-  revalidatePartnerShare();
+  revalidatePartnerShare(membership.organization_id);
   return { ok: true };
 }
 
@@ -293,7 +349,7 @@ export async function deductPartnerShareStockAction(sheetId: string) {
 
   const { error } = await supabase.rpc("admin_deduct_partner_share_stock", { p_sheet_id: parsed.data });
   if (error) return { ok: false, error: safeActionError(error, "partner-share.deduct-stock", "Stock could not be deducted.") };
-  revalidatePartnerShare();
+  revalidatePartnerShare(membership.organization_id);
   return { ok: true };
 }
 
@@ -314,6 +370,6 @@ export async function recordPartnerShareOutputAction(input: z.input<typeof outpu
   });
 
   if (error) return { ok: false, error: safeActionError(error, "partner-share.record-output", "Output could not be recorded.") };
-  revalidatePartnerShare();
+  revalidatePartnerShare(membership.organization_id);
   return { ok: true };
 }

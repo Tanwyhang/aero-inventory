@@ -23,7 +23,8 @@ import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Popover, PopoverContent, PopoverDescription, PopoverHeader, PopoverTitle, PopoverTrigger } from "@/components/ui/popover";
 import { CopyInviteLinkButton, WorkspaceActionButton } from "@/components/workspace-action-button";
-import { getAvailableWorkspaces, getSelectedWorkspaceId, isMissingSessionError } from "@/lib/auth";
+import { getAvailableWorkspaces, getRequestAccessToken, getSelectedWorkspaceId, getVerifiedClaims, isMissingSessionError } from "@/lib/auth";
+import { getCachedWorkspaceAdministration } from "@/lib/cached-data";
 import { getAppUrl } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 import type { WorkspaceInviteRow, WorkspaceMemberRow, WorkspaceSeatUsageRow } from "@/types/database";
@@ -51,11 +52,12 @@ export default async function WorkspacesPage({
   searchParams: Promise<{ error?: string; invite?: string; email?: string; token?: string }>;
 }) {
   const supabase = await createClient();
-  const [{ data: userData, error: userError }, params, workspaces, selectedWorkspaceId] = await Promise.all([
-    supabase.auth.getUser(),
+  const [{ data: claimsData, error: userError }, params, workspaces, selectedWorkspaceId, accessToken] = await Promise.all([
+    getVerifiedClaims(),
     searchParams,
     getAvailableWorkspaces(),
     getSelectedWorkspaceId(),
+    getRequestAccessToken(),
   ]);
 
   if (userError && !isMissingSessionError(userError)) {
@@ -67,45 +69,29 @@ export default async function WorkspacesPage({
     throw new Error("Unable to verify the current session.");
   }
 
-  if (!userData.user) redirect("/login");
+  const userId = claimsData?.claims.sub;
+  if (!userId || !accessToken) redirect("/login");
 
   const activeWorkspaceId = selectedWorkspaceId ?? workspaces.find((workspace) => workspace.is_last_workspace)?.organization_id ?? workspaces[0]?.organization_id ?? null;
   const activeWorkspace = workspaces.find((workspace) => workspace.organization_id === activeWorkspaceId) ?? null;
   const canManage = activeWorkspace?.role === "admin";
-  const [{ data: members, error: membersError }, { data: invites, error: invitesError }, { data: seatUsage, error: seatUsageError }] = canManage && activeWorkspaceId
-    ? await Promise.all([
-      supabase.rpc("admin_list_workspace_members", { p_organization_id: activeWorkspaceId }),
-      supabase.rpc("admin_list_workspace_invites", { p_organization_id: activeWorkspaceId }),
-      supabase.rpc("get_workspace_seat_usage", { p_organization_id: activeWorkspaceId }),
-    ])
-    : [{ data: [], error: null }, { data: [], error: null }, { data: [], error: null }];
+  const workspaceAdministration = canManage && activeWorkspaceId
+    ? await getCachedWorkspaceAdministration(activeWorkspaceId, accessToken)
+    : { members: [], invites: [], seatUsage: null };
 
   const { data: isSuperAdmin, error: superAdminError } = await supabase.rpc("is_aero_super_admin");
 
-  if (membersError || invitesError || seatUsageError) {
-    console.error("Workspace administration data failed to load", {
-      workspaceId: activeWorkspaceId,
-      membersCode: membersError?.code ?? null,
-      invitesCode: invitesError?.code ?? null,
-      seatUsageCode: seatUsageError?.code ?? null,
-      membersMessage: membersError?.message ?? null,
-      invitesMessage: invitesError?.message ?? null,
-      seatUsageMessage: seatUsageError?.message ?? null,
-    });
-    throw new Error("Unable to load workspace administration data.");
-  }
-
   if (superAdminError) {
     console.error("Aero Super Admin access check failed", {
-      userId: userData.user.id,
+      userId,
       code: superAdminError.code,
       message: superAdminError.message,
     });
   }
 
-  const memberRows = (members ?? []) as WorkspaceMemberRow[];
-  const inviteRows = (invites ?? []) as WorkspaceInviteRow[];
-  const seatUsageRow = ((seatUsage ?? []) as WorkspaceSeatUsageRow[])[0] ?? null;
+  const memberRows = workspaceAdministration.members as WorkspaceMemberRow[];
+  const inviteRows = workspaceAdministration.invites as WorkspaceInviteRow[];
+  const seatUsageRow = workspaceAdministration.seatUsage as WorkspaceSeatUsageRow | null;
   const inviteUrl = params.invite ? `${getAppUrl()}/workspaces?token=${encodeURIComponent(params.invite)}` : null;
   const workspaceSelectorUrl = `${getAppUrl()}/workspaces`;
   const safeErrorMessage = workspaceErrorMessage(params.error);
@@ -128,11 +114,13 @@ export default async function WorkspacesPage({
           <div className="flex items-center justify-between gap-3 px-1">
             <h2 className="text-sm font-black uppercase tracking-[0.14em] text-zinc-400">Your workspaces</h2>
             <div className="flex items-center gap-2">
-              {isSuperAdmin ? (
-                <Link href="/aero-admin" className="inline-flex h-9 items-center gap-2 rounded-xl bg-black px-3 text-xs font-black text-lime transition hover:bg-zinc-800">
-                  <ShieldCheck className="size-4" />Aero Admin
-                </Link>
-              ) : null}
+              <Link
+                href="/aero-admin"
+                className="inline-flex h-9 items-center gap-2 rounded-xl bg-black px-3 text-xs font-black text-lime transition hover:bg-zinc-800"
+                title={isSuperAdmin ? "Open Aero Admin" : "Open Aero Admin password login"}
+              >
+                <ShieldCheck className="size-4" />Aero Admin
+              </Link>
               <AddWorkspaceShortcutButton url={workspaceSelectorUrl} />
               <Badge variant="outline" className="bg-white font-black text-zinc-600">{workspaces.length}</Badge>
             </div>

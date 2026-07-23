@@ -1,43 +1,20 @@
+import { redirect } from "next/navigation";
+
 import { AppSidebar } from "@/components/app-sidebar";
 import { FluidEntrySurface } from "@/components/fluid-entry-surface";
-import { ReportsActivityLists, type ReportAudit, type ReportMovement, type ReportRestock } from "@/components/reports-activity-lists";
-import { ReportsAreaChart, type ReportsAreaDatum } from "@/components/reports-area-chart";
-import { requireMembership } from "@/lib/auth";
+import { LazyReportsActivityLists, LazyReportsAreaChart } from "@/components/lazy-page-components";
+import type { ReportAudit, ReportMovement, ReportRestock } from "@/components/reports-activity-lists";
+import type { ReportsAreaDatum } from "@/components/reports-area-chart";
+import { getRequestAccessToken, requireMembership } from "@/lib/auth";
+import {
+  getCachedAdminInventory,
+  getCachedReportActivity,
+  getCachedReportReferences,
+  getCachedRestockRequests,
+  type ReportAuditEventRow,
+  type ReportMovementRow,
+} from "@/lib/cached-data";
 import { withSignedSkuPhotoUrls } from "@/lib/sku-photos";
-import { createClient } from "@/lib/supabase/server";
-import type { AdminInventoryRow, RestockRequestRow, StockAdjustmentReason, WorkspaceMemberRow } from "@/types/database";
-
-type MovementRow = {
-  id: string;
-  sku_id: string;
-  location_id: string;
-  actor_user_id: string;
-  movement_type: string;
-  quantity_delta: number;
-  quantity_before: number;
-  quantity_after: number;
-  reason: StockAdjustmentReason | null;
-  note: string | null;
-  created_at: string;
-};
-
-type AuditEventRow = {
-  id: string;
-  event_type: string;
-  entity_type: string;
-  action: string;
-  entity_label: string | null;
-  actor_user_id: string | null;
-  actor_role: string | null;
-  before_data: unknown;
-  after_data: unknown;
-  metadata: unknown;
-  created_at: string;
-};
-
-function uniqueStrings(values: Array<string | null | undefined>) {
-  return Array.from(new Set(values.filter((value): value is string => Boolean(value))));
-}
 
 function memberRole(role: string | null | undefined): "admin" | "staff" | null {
   if (role === "admin" || role === "staff") return role;
@@ -83,73 +60,22 @@ export default async function ReportsPage() {
     );
   }
 
-  const supabase = await createClient();
-  const [
-    { data: movements, error: movementsError },
-    { data: auditEvents, error: auditEventsError },
-    { data: restockRequests, error: restockError },
-    { data: adminRows, error: adminRowsError },
-  ] = await Promise.all([
-    supabase
-      .from("stock_movements")
-      .select("id, sku_id, location_id, actor_user_id, movement_type, quantity_delta, quantity_before, quantity_after, reason, note, created_at")
-      .eq("organization_id", membership.organization_id)
-      .order("created_at", { ascending: false })
-      .limit(200),
-    supabase
-      .from("audit_events")
-      .select("id, event_type, entity_type, action, entity_label, actor_user_id, actor_role, before_data, after_data, metadata, created_at")
-      .eq("organization_id", membership.organization_id)
-      .order("created_at", { ascending: false })
-      .limit(20),
-    supabase.rpc("get_admin_restock_requests", { p_organization_id: membership.organization_id }),
-    supabase.rpc("get_admin_inventory_overview", { p_organization_id: membership.organization_id }),
+  const accessToken = await getRequestAccessToken();
+  if (!accessToken) redirect("/login");
+
+  const [{ movements, auditEvents }, restockRows, adminRows, references] = await Promise.all([
+    getCachedReportActivity(membership.organization_id, accessToken),
+    getCachedRestockRequests(membership.organization_id, accessToken),
+    getCachedAdminInventory(membership.organization_id, accessToken),
+    getCachedReportReferences(membership.organization_id, accessToken),
   ]);
 
-  if (movementsError || auditEventsError || restockError || adminRowsError) {
-    console.error("Reports data failed to load", {
-      workspaceId: membership.organization_id,
-      movementsCode: movementsError?.code ?? null,
-      auditCode: auditEventsError?.code ?? null,
-      restockCode: restockError?.code ?? null,
-      inventoryCode: adminRowsError?.code ?? null,
-      movementsMessage: movementsError?.message ?? null,
-      auditMessage: auditEventsError?.message ?? null,
-      restockMessage: restockError?.message ?? null,
-      inventoryMessage: adminRowsError?.message ?? null,
-    });
-    throw new Error("Unable to load reports.");
-  }
-
-  const restockRows = (restockRequests ?? []) as RestockRequestRow[];
-  const movementRows = (movements ?? []) as MovementRow[];
-  const auditRows = (auditEvents ?? []) as AuditEventRow[];
-  const actorIds = uniqueStrings([...movementRows.map((movement) => movement.actor_user_id), ...auditRows.map((event) => event.actor_user_id)]);
-  const locationIds = uniqueStrings(movementRows.map((movement) => movement.location_id));
-  const [
-    { data: workspaceMembers, error: workspaceMembersError },
-    { data: locations, error: locationsError },
-  ] = await Promise.all([
-    actorIds.length > 0
-      ? supabase.rpc("admin_list_workspace_members", { p_organization_id: membership.organization_id })
-      : Promise.resolve({ data: [], error: null }),
-    locationIds.length > 0 ? supabase.from("locations").select("id, name").eq("organization_id", membership.organization_id).in("id", locationIds) : Promise.resolve({ data: [], error: null }),
-  ]);
-
-  if (workspaceMembersError || locationsError) {
-    console.error("Reports reference data failed to load", {
-      workspaceId: membership.organization_id,
-      membersCode: workspaceMembersError?.code ?? null,
-      locationsCode: locationsError?.code ?? null,
-      membersMessage: workspaceMembersError?.message ?? null,
-      locationsMessage: locationsError?.message ?? null,
-    });
-    throw new Error("Unable to load report details.");
-  }
-  const actorById = new Map(((workspaceMembers ?? []) as WorkspaceMemberRow[]).map((actor) => [actor.user_id, actor]));
-  const locationById = new Map((locations ?? []).map((location) => [location.id, location]));
+  const movementRows = movements as ReportMovementRow[];
+  const auditRows = auditEvents as ReportAuditEventRow[];
+  const actorById = new Map(references.members.map((actor) => [actor.user_id, actor]));
+  const locationById = new Map(references.locations.map((location) => [location.id, location]));
   const movementChartData = getMovementChartData(movementRows);
-  const inventoryRows = await withSignedSkuPhotoUrls((adminRows ?? []) as AdminInventoryRow[]);
+  const inventoryRows = await withSignedSkuPhotoUrls(adminRows);
   const inventoryBySku = new Map(inventoryRows.map((row) => [row.sku_id, row]));
   const reportMovements: ReportMovement[] = movementRows.slice(0, 20).map((movement) => {
     const row = inventoryBySku.get(movement.sku_id);
@@ -219,9 +145,9 @@ export default async function ReportsPage() {
           <h1 className="text-2xl font-black tracking-[-0.055em] sm:text-[44px]">Reports</h1>
           <p className="mt-1.5 text-sm font-semibold text-zinc-500 sm:text-base">Operational stock, restock, and audit trail.</p>
 
-          <ReportsAreaChart data={movementChartData} />
+          <LazyReportsAreaChart data={movementChartData} />
 
-          <ReportsActivityLists movements={reportMovements} restocks={reportRestocks} audits={reportAudits} />
+          <LazyReportsActivityLists movements={reportMovements} restocks={reportRestocks} audits={reportAudits} />
         </section>
       </div>
     </main>

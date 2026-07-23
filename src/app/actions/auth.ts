@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { clearSelectedWorkspaceCookie } from "@/lib/auth";
+import { isPasswordLoginEnabled } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
 
 async function getRequestOrigin() {
@@ -32,6 +33,29 @@ export async function signInWithGoogle() {
   }
 
   redirect(data.url);
+}
+
+export async function signInWithPassword(formData: FormData) {
+  if (!isPasswordLoginEnabled()) {
+    redirect("/login?error=password-disabled");
+  }
+
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const password = String(formData.get("password") ?? "");
+
+  if (!email || !password) {
+    redirect("/login?error=password");
+  }
+
+  const supabase = await createClient();
+  const { error } = await supabase.auth.signInWithPassword({ email, password });
+
+  if (error) {
+    redirect("/login?error=password");
+  }
+
+  await supabase.rpc("record_user_login");
+  redirect("/workspaces");
 }
 
 export async function signOut() {

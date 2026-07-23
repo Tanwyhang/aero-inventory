@@ -116,6 +116,7 @@ export function TutorialPage({ membership }: { membership: Membership }) {
                   key={`${selectedLesson.id}-${tutorialRole}-${frameSize}`}
                   title={`${selectedLesson.label} tutorial`}
                   src={frameSrc}
+                  loading="lazy"
                   className={cn(
                     "mx-auto block border-0 bg-white transition-all",
                     frameSize === "desktop" ? "h-[760px] w-full min-w-[1120px]" : "h-[760px] w-[390px]",

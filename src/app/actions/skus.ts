@@ -5,6 +5,8 @@ import { z } from "zod";
 
 import { safeActionError } from "@/lib/action-error";
 import { requireMembership } from "@/lib/auth";
+import { revalidateWorkspaceData } from "@/lib/cached-data";
+import { optimizeProductImage } from "@/lib/optimize-image";
 import { normalizeWhatsAppNumber } from "@/lib/phone";
 import { SKU_PHOTOS_BUCKET } from "@/lib/sku-photos";
 import { createClient } from "@/lib/supabase/server";
@@ -114,6 +116,13 @@ function hasDuplicate(values: string[]) {
   return new Set(normalized).size !== normalized.length;
 }
 
+function revalidateSkuPages(organizationId: string, includePartnerShare = false) {
+  revalidateWorkspaceData(organizationId);
+  revalidatePath("/");
+  revalidatePath("/sku");
+  revalidatePath(includePartnerShare ? "/partner-share" : "/reports");
+}
+
 export async function createSkuAction(input: z.input<typeof skuSchema>) {
   const membership = await requireMembership();
   if (membership.role !== "admin") return { ok: false, error: "Admin access required." };
@@ -157,9 +166,7 @@ export async function createSkuAction(input: z.input<typeof skuSchema>) {
     }
   }
 
-  revalidatePath("/");
-  revalidatePath("/sku");
-  revalidatePath("/reports");
+  revalidateSkuPages(membership.organization_id);
   return { ok: true, skuId };
 }
 
@@ -177,9 +184,7 @@ export async function createProductCategoryAction(input: z.input<typeof category
   });
 
   if (error) return { ok: false, error: safeActionError(error, "createProductCategoryAction.rpc", "Category could not be saved.") };
-  revalidatePath("/sku");
-  revalidatePath("/");
-  revalidatePath("/partner-share");
+  revalidateSkuPages(membership.organization_id, true);
   return { ok: true, categoryId: data };
 }
 
@@ -213,9 +218,35 @@ export async function updateProductCategoryAction(input: z.input<typeof updateCa
   });
 
   if (error) return { ok: false, error: safeActionError(error, "updateProductCategoryAction.rpc", "Category could not be updated.") };
-  revalidatePath("/sku");
-  revalidatePath("/");
-  revalidatePath("/partner-share");
+  revalidateSkuPages(membership.organization_id, true);
+  return { ok: true };
+}
+
+export async function archiveProductCategoryAction(categoryId: string) {
+  const membership = await requireMembership();
+  if (membership.role !== "admin") return { ok: false, error: "Admin access required." };
+
+  const parsed = z.string().uuid().safeParse(categoryId);
+  if (!parsed.success) return { ok: false, error: "Choose a valid category." };
+
+  const supabase = await createClient();
+  const { data: categoryRow, error: categoryLookupError } = await supabase
+    .from("product_categories")
+    .select("id")
+    .eq("id", parsed.data)
+    .eq("organization_id", membership.organization_id)
+    .is("archived_at", null)
+    .maybeSingle();
+
+  if (categoryLookupError) {
+    return { ok: false, error: safeActionError(categoryLookupError, "archiveProductCategoryAction.lookup", "Category could not be checked.") };
+  }
+  if (!categoryRow) return { ok: false, error: "Category is not available in the selected workspace." };
+
+  const { error } = await supabase.rpc("admin_archive_product_category", { p_category_id: parsed.data });
+  if (error) return { ok: false, error: safeActionError(error, "archiveProductCategoryAction.rpc", "Category could not be deleted.") };
+
+  revalidateSkuPages(membership.organization_id, true);
   return { ok: true };
 }
 
@@ -249,9 +280,7 @@ export async function updateSkuAction(input: z.input<typeof updateSkuSchema>) {
   });
 
   if (error) return { ok: false, error: safeActionError(error, "updateSkuAction.rpc", "SKU could not be updated.") };
-  revalidatePath("/");
-  revalidatePath("/sku");
-  revalidatePath("/reports");
+  revalidateSkuPages(membership.organization_id);
   return { ok: true };
 }
 
@@ -358,11 +387,12 @@ export async function createVariationGroupAction(formData: FormData) {
       continue;
     }
 
-    const path = `${membership.organization_id}/${skuId}/${crypto.randomUUID()}.${extension}`;
+    const optimizedPhoto = await optimizeProductImage(photo, extension);
+    const path = `${membership.organization_id}/${skuId}/${crypto.randomUUID()}.${optimizedPhoto.extension}`;
 
     try {
-      const { error: uploadError } = await supabase.storage.from(SKU_PHOTOS_BUCKET).upload(path, photo, {
-        contentType: photo.type,
+      const { error: uploadError } = await supabase.storage.from(SKU_PHOTOS_BUCKET).upload(path, optimizedPhoto.body, {
+        contentType: optimizedPhoto.contentType,
         upsert: false,
       });
 
@@ -381,9 +411,7 @@ export async function createVariationGroupAction(formData: FormData) {
     }
   }
 
-  revalidatePath("/");
-  revalidatePath("/sku");
-  revalidatePath("/reports");
+  revalidateSkuPages(membership.organization_id);
   return {
     ok: true,
     variationGroupId: typeof savedResult?.variation_group_id === "string" ? savedResult.variation_group_id : parsed.data.variationGroupId,
@@ -419,9 +447,7 @@ export async function archiveSkuAction(skuId: string) {
   const { error } = await supabase.rpc("admin_archive_sku", { p_sku_id: parsed.data });
 
   if (error) return { ok: false, error: safeActionError(error, "archiveSkuAction.rpc", "SKU could not be archived.") };
-  revalidatePath("/");
-  revalidatePath("/sku");
-  revalidatePath("/reports");
+  revalidateSkuPages(membership.organization_id);
   return { ok: true };
 }
 
@@ -446,9 +472,10 @@ export async function uploadSkuPhotoAction(formData: FormData) {
   const row = (rows as AdminSkuManagerRow[] | null)?.find((item) => item.sku_id === skuId);
   if (!row) return { ok: false, error: "SKU not found." };
 
-  const path = `${membership.organization_id}/${skuId}/${crypto.randomUUID()}.${extension}`;
-  const { error: uploadError } = await supabase.storage.from(SKU_PHOTOS_BUCKET).upload(path, file, {
-    contentType: file.type,
+  const optimizedPhoto = await optimizeProductImage(file, extension);
+  const path = `${membership.organization_id}/${skuId}/${crypto.randomUUID()}.${optimizedPhoto.extension}`;
+  const { error: uploadError } = await supabase.storage.from(SKU_PHOTOS_BUCKET).upload(path, optimizedPhoto.body, {
+    contentType: optimizedPhoto.contentType,
     upsert: false,
   });
 
@@ -464,9 +491,7 @@ export async function uploadSkuPhotoAction(formData: FormData) {
     await supabase.storage.from(SKU_PHOTOS_BUCKET).remove([row.photo_path]);
   }
 
-  revalidatePath("/");
-  revalidatePath("/sku");
-  revalidatePath("/reports");
+  revalidateSkuPages(membership.organization_id);
   return { ok: true };
 }
 
@@ -488,8 +513,6 @@ export async function removeSkuPhotoAction(skuId: string) {
     await supabase.storage.from(SKU_PHOTOS_BUCKET).remove([row.photo_path]);
   }
 
-  revalidatePath("/");
-  revalidatePath("/sku");
-  revalidatePath("/reports");
+  revalidateSkuPages(membership.organization_id);
   return { ok: true };
 }

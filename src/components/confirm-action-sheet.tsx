@@ -13,7 +13,7 @@ export type ConfirmationRecord = {
   value: string | number | null | undefined;
 };
 
-export function ConfirmSlideSheet({
+export function ConfirmActionSheet({
   title,
   description,
   records,
@@ -48,13 +48,13 @@ export function ConfirmSlideSheet({
 
   return (
     <Dialog open onOpenChange={(open) => !open && !isPending && onCancel()}>
-      <DialogContent showCloseButton={false} className="z-[70] w-full max-w-[22rem] border-0 bg-transparent p-0 shadow-none sm:max-w-lg">
-        <FluidEntrySurface data-tutorial="confirmation-sheet" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/95 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
+      <DialogContent showCloseButton={false} className="z-[70] w-full max-w-[calc(100vw-1rem)] border-0 bg-transparent p-0 shadow-none sm:max-w-lg">
+        <FluidEntrySurface data-tutorial="confirmation-sheet" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1rem)] rounded-2xl border border-white/50 bg-white/95 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-1rem)] overflow-y-auto overscroll-contain p-4 sm:p-6">
           <div className="flex items-start justify-between gap-4">
-            <div>
+            <div className="min-w-0">
               <div className="text-xs font-black uppercase tracking-[0.14em] text-zinc-400">Confirm Record</div>
-              <DialogTitle className="mt-1 text-xl font-black tracking-[-0.05em] sm:text-2xl">{title}</DialogTitle>
-              <DialogDescription className="mt-1.5 text-xs font-bold text-zinc-500 sm:text-sm">{description}</DialogDescription>
+              <DialogTitle className="mt-1 break-words text-xl font-black tracking-[-0.05em] sm:text-2xl">{title}</DialogTitle>
+              <DialogDescription className="mt-1.5 text-pretty text-xs font-bold text-zinc-500 sm:text-sm">{description}</DialogDescription>
             </div>
             <button type="button" onClick={onCancel} disabled={isPending} className="grid size-9 shrink-0 place-items-center rounded-xl border border-border bg-white disabled:opacity-50 sm:size-10" aria-label="Close confirmation">
               <X className="size-4 sm:size-5" />
@@ -72,13 +72,13 @@ export function ConfirmSlideSheet({
 
           {error ? <div className="mt-4 rounded-xl border border-border bg-white px-4 py-3 text-sm font-black text-black">{error}</div> : null}
 
-          <div data-tutorial="confirmation-action" className="mt-4 flex justify-end gap-3 sm:mt-6">
-            <Button type="button" variant="outline" disabled={isPending} onClick={onCancel} className="h-11 rounded-xl px-5 font-black">
+          <div data-tutorial="confirmation-action" className="mt-4 grid grid-cols-2 gap-2 sm:mt-6 sm:flex sm:justify-end sm:gap-3">
+            <Button type="button" variant="outline" disabled={isPending} onClick={onCancel} className="h-11 min-w-0 rounded-xl px-3 font-black sm:px-5">
               Cancel
             </Button>
-            <Button type="button" variant={confirmVariant} disabled={isPending} onClick={() => void handleConfirm()} className="h-11 min-w-36 rounded-xl px-5 font-black">
+            <Button type="button" variant={confirmVariant} disabled={isPending} onClick={() => void handleConfirm()} className="h-11 min-w-0 rounded-xl px-3 font-black sm:min-w-36 sm:px-5">
               {isPending ? <LumaSpinner label="Processing" /> : null}
-              {isPending ? "Processing..." : confirmLabel}
+              {isPending ? "Processing…" : confirmLabel}
             </Button>
           </div>
         </FluidEntrySurface>

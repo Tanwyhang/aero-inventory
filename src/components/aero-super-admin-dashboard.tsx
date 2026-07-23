@@ -6,7 +6,7 @@ import { useActionState, useDeferredValue, useMemo, useState } from "react";
 import { useFormStatus } from "react-dom";
 import { ArrowLeft, Boxes, Building2, Search, ShieldCheck, Store, Users } from "lucide-react";
 
-import aeroLogo from "../../design/logoword.png";
+import aeroLogo from "../../design/logoword.webp";
 import { updateAeroCustomerAction, type AeroAdminActionState } from "@/app/actions/aero-admin";
 import { useLocale } from "@/components/locale-provider";
 import { Badge } from "@/components/ui/badge";

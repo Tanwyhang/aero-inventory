@@ -5,6 +5,7 @@ import { z } from "zod";
 
 import { requireMembership } from "@/lib/auth";
 import { safeActionError } from "@/lib/action-error";
+import { revalidateWorkspaceData } from "@/lib/cached-data";
 import { STOCK_ADJUSTMENT_REASONS } from "@/lib/stock-reasons";
 import { createClient } from "@/lib/supabase/server";
 
@@ -45,6 +46,7 @@ export async function adjustStockAction(input: z.infer<typeof stockAdjustmentSch
     return { ok: false, error: safeActionError(error, "adjustStockAction.rpc", "Stock could not be updated.") };
   }
 
+  revalidateWorkspaceData(membership.organization_id);
   revalidatePath("/");
   revalidatePath("/sku");
   revalidatePath("/reports");

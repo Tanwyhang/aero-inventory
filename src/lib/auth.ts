@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { cookies } from "next/headers";
+import { cache } from "react";
 
 import { createClient } from "@/lib/supabase/server";
 import type { MemberRole, Membership, WorkspaceMembership } from "@/types/database";
@@ -23,6 +24,32 @@ export function isMissingSessionError(error: { name?: string; code?: string } | 
   return error?.name === "AuthSessionMissingError" || error?.code === "session_not_found";
 }
 
+const getVerifiedClaimsForRequest = cache(async () => {
+  const supabase = await createClient();
+  return supabase.auth.getClaims();
+});
+
+export async function getVerifiedClaims() {
+  return getVerifiedClaimsForRequest();
+}
+
+const getRequestAccessTokenForRequest = cache(async () => {
+  const [{ data: claimsData, error: claimsError }, supabase] = await Promise.all([
+    getVerifiedClaims(),
+    createClient(),
+  ]);
+
+  if (claimsError || !claimsData?.claims.sub) return null;
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) return null;
+  return sessionData.session?.access_token ?? null;
+});
+
+export async function getRequestAccessToken() {
+  return getRequestAccessTokenForRequest();
+}
+
 export async function getSelectedWorkspaceId() {
   return (await cookies()).get(WORKSPACE_COOKIE)?.value ?? null;
 }
@@ -41,9 +68,9 @@ export async function clearSelectedWorkspaceCookie() {
   (await cookies()).delete(WORKSPACE_COOKIE);
 }
 
-export async function getAvailableWorkspaces(): Promise<WorkspaceMembership[]> {
+const getAvailableWorkspacesForRequest = cache(async (): Promise<WorkspaceMembership[]> => {
   const supabase = await createClient();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const { data: claimsData, error: userError } = await getVerifiedClaims();
 
   if (userError && !isMissingSessionError(userError)) {
     console.error("Workspace session lookup failed", {
@@ -54,13 +81,29 @@ export async function getAvailableWorkspaces(): Promise<WorkspaceMembership[]> {
     throw new Error("Unable to verify the current session.");
   }
 
-  if (!userData.user) return [];
+  const userId = claimsData?.claims.sub;
+  if (!userId) return [];
 
   const { error: bootstrapError } = await supabase.rpc("claim_bootstrap_admin");
 
   if (bootstrapError) {
+    if (/verified google email required/i.test(bootstrapError.message ?? "")) {
+      const { data, error } = await supabase.rpc("get_my_workspaces");
+
+      if (error) {
+        console.error("Workspace list lookup failed", {
+          userId,
+          code: error.code,
+          message: error.message,
+        });
+        throw new Error("Unable to load workspaces.");
+      }
+
+      return ((data ?? []) as WorkspaceMembership[]).map(toWorkspace).filter((workspace) => workspace.status === "active");
+    }
+
     console.error("Workspace bootstrap check failed", {
-      userId: userData.user.id,
+      userId,
       code: bootstrapError.code,
       message: bootstrapError.message,
     });
@@ -71,7 +114,7 @@ export async function getAvailableWorkspaces(): Promise<WorkspaceMembership[]> {
 
   if (error) {
     console.error("Workspace list lookup failed", {
-      userId: userData.user.id,
+      userId,
       code: error.code,
       message: error.message,
     });
@@ -81,9 +124,13 @@ export async function getAvailableWorkspaces(): Promise<WorkspaceMembership[]> {
   if (!data) return [];
 
   return (data as WorkspaceMembership[]).map(toWorkspace).filter((workspace) => workspace.status === "active");
+});
+
+export async function getAvailableWorkspaces(): Promise<WorkspaceMembership[]> {
+  return getAvailableWorkspacesForRequest();
 }
 
-export async function getCurrentMembership(): Promise<Membership | null> {
+const getCurrentMembershipForRequest = cache(async (): Promise<Membership | null> => {
   const workspaces = await getAvailableWorkspaces();
 
   if (workspaces.length === 0) return null;
@@ -103,6 +150,10 @@ export async function getCurrentMembership(): Promise<Membership | null> {
     full_name: row.full_name,
     workspaces,
   };
+});
+
+export async function getCurrentMembership(): Promise<Membership | null> {
+  return getCurrentMembershipForRequest();
 }
 
 export async function requireMembership() {

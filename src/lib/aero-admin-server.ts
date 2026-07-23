@@ -1,11 +1,12 @@
 import "server-only";
 
+import { unstable_cache } from "next/cache";
 import { z } from "zod";
 
-import type { createClient } from "@/lib/supabase/server";
+import { createServiceRoleClient } from "@/lib/supabase/service-role";
 import type { AeroSuperAdminCustomer } from "@/types/aero-admin";
 
-type ServerSupabaseClient = Awaited<ReturnType<typeof createClient>>;
+export const AERO_ADMIN_CUSTOMERS_CACHE_TAG = "aero:admin:customers";
 
 export type AeroAdminRpcError = {
   code?: string | null;
@@ -57,11 +58,11 @@ const customerRowSchema = z.object({
 }).passthrough();
 
 export async function callAeroAdminRpc<T>(
-  supabase: ServerSupabaseClient,
+  supabase: UntypedRpcClient,
   functionName: string,
   args?: Record<string, unknown>,
 ) {
-  return (supabase as unknown as UntypedRpcClient).rpc<T>(functionName, args);
+  return supabase.rpc<T>(functionName, args);
 }
 
 export function parseAeroSuperAdminCustomers(value: unknown): AeroSuperAdminCustomer[] {
@@ -110,3 +111,20 @@ export function parseAeroSuperAdminCustomers(value: unknown): AeroSuperAdminCust
     } satisfies AeroSuperAdminCustomer;
   });
 }
+
+export const getCachedAeroSuperAdminCustomers = unstable_cache(
+  async () => {
+    const supabase = createServiceRoleClient();
+    const { data, error } = await callAeroAdminRpc<unknown>(supabase, "service_role_list_aero_customers");
+    if (error) {
+      console.error("Password Aero Super Admin customer list failed", {
+        code: error.code ?? null,
+        message: error.message ?? null,
+      });
+      throw new Error("Unable to load Aero customers.");
+    }
+    return parseAeroSuperAdminCustomers(data);
+  },
+  ["aero-admin-customers", "v1"],
+  { revalidate: 60, tags: [AERO_ADMIN_CUSTOMERS_CACHE_TAG] },
+);

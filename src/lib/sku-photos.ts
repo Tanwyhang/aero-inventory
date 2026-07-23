@@ -1,4 +1,5 @@
-import { createClient } from "@/lib/supabase/server";
+import { getRequestAccessToken } from "@/lib/auth";
+import { getCachedSignedPhotoUrls } from "@/lib/cached-data";
 
 type RowWithPhoto = {
   photo_path: string | null;
@@ -11,9 +12,10 @@ export async function withSignedSkuPhotoUrls<T extends RowWithPhoto>(rows: T[]):
   const paths = Array.from(new Set(rows.map((row) => row.photo_path).filter((path): path is string => Boolean(path))));
   if (paths.length === 0) return rows;
 
-  const supabase = await createClient();
-  const { data } = await supabase.storage.from(SKU_PHOTOS_BUCKET).createSignedUrls(paths, 60 * 30);
-  const urls = new Map(data?.map((item) => [item.path, item.signedUrl]) ?? []);
+  const accessToken = await getRequestAccessToken();
+  if (!accessToken) return rows.map((row) => ({ ...row, photo_url: null }));
+
+  const urls = await getCachedSignedPhotoUrls(paths, accessToken);
 
   return rows.map((row) => ({
     ...row,

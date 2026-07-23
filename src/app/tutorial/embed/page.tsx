@@ -1,4 +1,4 @@
-import { TutorialEmbed } from "@/components/tutorial/tutorial-embed";
+import { LazyTutorialEmbed } from "@/components/lazy-page-components";
 import { requireMembership } from "@/lib/auth";
 
 export default async function TutorialEmbedRoute({ searchParams }: { searchParams: Promise<{ lesson?: string; role?: string }> }) {
@@ -7,5 +7,5 @@ export default async function TutorialEmbedRoute({ searchParams }: { searchParam
   const requestedRole = params.role === "staff" ? "staff" : "admin";
   const role = membership.role === "admin" ? requestedRole : "staff";
 
-  return <TutorialEmbed lessonId={params.lesson ?? "stock"} role={role} />;
+  return <LazyTutorialEmbed lessonId={params.lesson ?? "stock"} role={role} />;
 }

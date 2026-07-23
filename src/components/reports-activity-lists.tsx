@@ -107,7 +107,7 @@ function TinyThumb({ label, photoUrl }: { label: string; photoUrl?: string | nul
   return (
     <div className="relative size-8 shrink-0 overflow-hidden rounded-lg border border-white bg-white ring-1 ring-black/5 sm:size-8 sm:rounded-lg">
       {photoUrl ? (
-        <Image src={photoUrl} alt="" aria-hidden="true" fill loading="lazy" sizes="32px" className="object-cover" />
+        <Image src={photoUrl} alt="" aria-hidden="true" fill loading="lazy" quality={60} sizes="32px" className="object-cover" />
       ) : (
         <div className="grid size-full place-items-center bg-lime text-sm font-black text-black/75">{label.slice(0, 1)}</div>
       )}

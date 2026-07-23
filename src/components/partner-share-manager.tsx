@@ -3,21 +3,24 @@
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { Check, Clipboard, Download, Lock, MoreHorizontal, PackagePlus, Pencil, Plus, Send, Trash2, X } from "lucide-react";
+import { Check, Clipboard, Download, Lock, PackagePlus, Pencil, Plus, Send, Trash2, X } from "lucide-react";
 
 import {
   addPartnerShareItemAction,
+  archivePartnerAction,
   createPartnerShareSheetAction,
+  deleteDraftPartnerShareSheetAction,
   deductPartnerShareStockAction,
   recordPartnerShareOutputAction,
   removePartnerShareItemAction,
   savePartnerAction,
   updatePartnerShareAutoSyncAction,
   updatePartnerShareItemAction,
+  updatePartnerShareSheetAction,
   updatePartnerShareStatusAction,
 } from "@/app/actions/partner-share";
 import { AppSidebar } from "@/components/app-sidebar";
-import { ConfirmSlideSheet, type ConfirmationRecord } from "@/components/confirm-slide-sheet";
+import { ConfirmActionSheet, type ConfirmationRecord } from "@/components/confirm-action-sheet";
 import { FluidEntrySurface } from "@/components/fluid-entry-surface";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,7 +40,7 @@ import type {
 } from "@/types/database";
 
 type InventoryRow = AdminInventoryRow | StaffInventoryRow;
-type Modal = "partner" | "sheet" | "item" | "edit-item" | null;
+type Modal = "partners" | "partner" | "sheet" | "item" | "edit-item" | null;
 type PartnerShareItem = PartnerShareSheetDetail["items"][number];
 
 const STAFF_VIEW_STORAGE_KEY = "aero:view-as-staff";
@@ -146,7 +149,7 @@ export function PartnerShareManager({
   const [selectedSheetId, setSelectedSheetId] = useState(details[0]?.sheet.id ?? "");
   const [modal, setModal] = useState<Modal>(null);
   const [partnerDraft, setPartnerDraft] = useState({ partnerId: "", name: "", contactName: "", phoneRaw: "", notes: "" });
-  const [sheetDraft, setSheetDraft] = useState({ partnerId: pageData.partners[0]?.id ?? "", locationId: inventoryRows[0]?.location_id ?? "", shareDate: today() });
+  const [sheetDraft, setSheetDraft] = useState({ sheetId: "", partnerId: pageData.partners[0]?.id ?? "", locationId: inventoryRows[0]?.location_id ?? "", shareDate: today() });
   const [itemDraft, setItemDraft] = useState({ itemId: "", skuId: inventoryRows[0]?.sku_id ?? "", shareQty: "1", remark: "" });
   const [sheetQuery, setSheetQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<PartnerShareStatus | "all">("all");
@@ -157,6 +160,7 @@ export function PartnerShareManager({
   const [confirmation, setConfirmation] = useState<PendingConfirmation | null>(null);
   const [confirmError, setConfirmError] = useState<string | null>(null);
   const [isPending, setIsPending] = useState(false);
+  const [quickAddingKey, setQuickAddingKey] = useState<string | null>(null);
   const selectedDetail = details.find((detail) => detail.sheet.id === selectedSheetId) ?? details[0] ?? null;
   const selectedSheet = selectedDetail?.sheet ?? null;
   const effectiveRole = isAdmin && viewAsStaff ? "staff" : membership.role;
@@ -220,7 +224,7 @@ export function PartnerShareManager({
     setConfirmError(null);
     try {
       const result = await action();
-      if (!result.ok) throw new Error("This action could not be completed. Refresh and try again.");
+      if (!result.ok) throw new Error(result.error ?? "This action could not be completed. Refresh and try again.");
 
       toast.success(success);
       setConfirmation(null);
@@ -252,6 +256,46 @@ export function PartnerShareManager({
     setModal("partner");
   }
 
+  function openPartnerManager() {
+    setModal("partners");
+  }
+
+  function openSheet(sheet?: PartnerShareSheetDetail["sheet"]) {
+    setSheetDraft(sheet ? {
+      sheetId: sheet.id,
+      partnerId: sheet.partner_id,
+      locationId: sheet.location_id,
+      shareDate: sheet.share_date,
+    } : {
+      sheetId: "",
+      partnerId: pageData.partners[0]?.id ?? "",
+      locationId: inventoryRows[0]?.location_id ?? "",
+      shareDate: today(),
+    });
+    setModal("sheet");
+  }
+
+  function archivePartner(partner: PartnerRow) {
+    ask("Delete Partner?", "The partner will be removed from active selection. Existing share-sheet history is preserved.", [
+      { label: "Partner", value: partner.name },
+      { label: "Contact", value: partner.contact_name || partner.phone_raw || "-" },
+      { label: "Action", value: "Delete partner" },
+    ], () => execute("Partner delete failed", () => archivePartnerAction(partner.id), "Partner deleted"));
+  }
+
+  function deleteSelectedDraftSheet() {
+    if (!selectedDetail || selectedDetail.sheet.status !== "draft") return;
+    const nextSheetId = details.find((detail) => detail.sheet.id !== selectedDetail.sheet.id)?.sheet.id ?? "";
+    ask("Delete Draft Sheet?", "This permanently removes the draft and its product rows. The deletion remains in the audit log.", [
+      { label: "Partner", value: selectedDetail.sheet.partner_name },
+      { label: "Date", value: formatDate(selectedDetail.sheet.share_date) },
+      { label: "Products", value: selectedDetail.items.length },
+    ], async () => {
+      await execute("Sheet delete failed", () => deleteDraftPartnerShareSheetAction(selectedDetail.sheet.id), "Draft sheet deleted");
+      setSelectedSheetId(nextSheetId);
+    });
+  }
+
   function submitPartner(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     ask(partnerDraft.partnerId ? "Confirm Partner Update" : "Confirm New Partner", "This partner change will be recorded in the audit trail.", [
@@ -265,13 +309,18 @@ export function PartnerShareManager({
     event.preventDefault();
     const partner = pageData.partners.find((item) => item.id === sheetDraft.partnerId);
     const location = locationRows.find((item) => item.location_id === sheetDraft.locationId);
-    ask("Confirm New Share Sheet", "This creates a draft Partner Share Qty sheet.", [
+    const isEditingSheet = Boolean(sheetDraft.sheetId);
+    ask(isEditingSheet ? "Confirm Sheet Update" : "Confirm New Share Sheet", isEditingSheet ? "This updates the draft share-sheet details." : "This creates a draft Partner Share Qty sheet.", [
       { label: "Partner", value: partner?.name },
       { label: "Source Shop", value: membership.organization_name },
       { label: "Location", value: location?.location_name },
       { label: "Date", value: formatDate(sheetDraft.shareDate) },
       { label: "Prepared By", value: membership.full_name || membership.user_email },
-    ], () => execute("Sheet creation failed", () => createPartnerShareSheetAction(sheetDraft), "Partner share sheet created"));
+    ], () => execute(
+      isEditingSheet ? "Sheet update failed" : "Sheet creation failed",
+      () => isEditingSheet ? updatePartnerShareSheetAction(sheetDraft) : createPartnerShareSheetAction(sheetDraft),
+      isEditingSheet ? "Share sheet updated" : "Partner share sheet created",
+    ));
   }
 
   function submitItem(event: FormEvent<HTMLFormElement>) {
@@ -302,11 +351,13 @@ export function PartnerShareManager({
 
   async function quickAddProduct(row: InventoryRow) {
     if (!selectedSheet || isPending) return;
+    const key = inventoryKey(row.sku_id, row.location_id);
     if (selectedSkuIds.has(inventoryKey(row.sku_id, row.location_id))) {
       toast.error("Product already added to this sheet");
       return;
     }
 
+    setQuickAddingKey(key);
     try {
       await execute(
         "Add product failed",
@@ -315,6 +366,8 @@ export function PartnerShareManager({
       );
     } catch {
       // execute already restores pending state and shows an actionable error.
+    } finally {
+      setQuickAddingKey(null);
     }
   }
 
@@ -436,16 +489,16 @@ export function PartnerShareManager({
       <div className="min-h-screen lg:pl-[242px]">
         <AppSidebar active="partner" role={effectiveRole} workspaceName={membership.organization_name} restockCount={restockCount} showStaffToggle={isAdmin} isViewingAsStaff={viewAsStaff} onToggleStaffView={toggleStaffView} />
         <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
-          <header className="flex flex-row items-center justify-between gap-3">
-            <div>
+          <header className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <h1 className="text-2xl font-black tracking-[-0.055em] sm:text-3xl">Partner Share Qty</h1>
               <p className="mt-1 hidden max-w-2xl text-xs font-semibold text-zinc-500 sm:block sm:text-sm">Manage partner share sheets and export quantities.</p>
             </div>
             {canManage ? (
               <div className="flex items-center gap-2">
-                <Button type="button" data-tutorial="partner-new-sheet" onClick={() => setModal("sheet")} disabled={pageData.partners.length === 0 || inventoryRows.length === 0} className="h-9 rounded-lg bg-lime px-3 text-xs font-bold text-black hover:bg-lime sm:px-4"><Plus className="size-4" />New Sheet</Button>
+                <Button type="button" data-tutorial="partner-new-sheet" onClick={() => openSheet()} disabled={pageData.partners.length === 0 || inventoryRows.length === 0} className="h-9 rounded-lg bg-lime px-3 text-xs font-bold text-black hover:bg-lime sm:px-4"><Plus className="size-4" />New Sheet</Button>
                 <Button type="button" data-tutorial="partner-new-partner" variant="outline" onClick={() => openPartner()} className="hidden h-9 rounded-lg bg-white px-3 text-xs font-bold hover:bg-white sm:inline-flex sm:px-4"><Plus className="size-4" />New Partner</Button>
-                <Button type="button" data-tutorial="partner-new-partner" variant="outline" onClick={() => openPartner()} className="h-9 rounded-lg bg-white px-2 text-xs font-bold hover:bg-white sm:hidden" aria-label="New partner"><MoreHorizontal className="size-4" /></Button>
+                <Button type="button" data-tutorial="partner-new-partner" variant="outline" onClick={openPartnerManager} className="h-9 rounded-lg bg-white px-2.5 text-xs font-bold hover:bg-white sm:hidden"><Plus className="size-4" />Partner</Button>
               </div>
             ) : null}
           </header>
@@ -467,6 +520,12 @@ export function PartnerShareManager({
                  <Button type="button" variant="outline" onClick={() => setIsSheetSwitcherOpen(true)} className="h-10 rounded-xl bg-white text-xs font-black hover:bg-white">Switch Sheet</Button>
                  {canManage && selectedDetail.sheet.status !== "completed" ? <Button type="button" onClick={openItemModal} className="h-10 rounded-xl bg-black text-xs font-black text-white hover:bg-black"><Plus className="size-4" />Add Product</Button> : null}
                </div>
+               {canManage ? (
+                 <div className="mt-2 grid grid-cols-2 gap-2">
+                   <Button type="button" variant="outline" onClick={() => openSheet(selectedDetail.sheet)} disabled={selectedDetail.sheet.status !== "draft"} className="h-10 rounded-xl bg-white text-xs font-black hover:bg-white"><Pencil className="size-3.5" />Edit Sheet</Button>
+                   {selectedDetail.sheet.status === "draft" ? <Button type="button" variant="destructive" onClick={deleteSelectedDraftSheet} className="h-10 rounded-xl text-xs font-black"><Trash2 className="size-3.5" />Delete Draft</Button> : <div />}
+                 </div>
+               ) : null}
                <label className={cn("mt-3 flex items-center gap-2 rounded-xl border border-border bg-white px-3 py-2 text-xs font-bold text-zinc-700", isLocked && "opacity-60")}> 
                  <input type="checkbox" checked={isAutoSync} onChange={(event) => toggleAutoSync(event.target.checked)} disabled={isLocked || isPending} className="size-4 accent-lime" />
                  <span>Auto-Sync with Main Store SKU</span>
@@ -506,7 +565,7 @@ export function PartnerShareManager({
                 ))}
               </div>
 
-              {canManage ? <button type="button" onClick={() => openPartner()} className="mt-3 inline-flex items-center gap-1 px-1 text-xs font-semibold text-zinc-400 underline-offset-4 hover:text-zinc-700 hover:underline"><MoreHorizontal className="size-4" />Partners</button> : null}
+              {canManage ? <Button type="button" variant="outline" onClick={openPartnerManager} className="mt-3 h-9 w-full rounded-xl bg-white text-xs font-black hover:bg-white"><Pencil className="size-3.5" />Manage Partners</Button> : null}
             </FluidEntrySurface>
 
             <div className="grid gap-5">
@@ -528,12 +587,14 @@ export function PartnerShareManager({
                         <span>Auto-Sync with Main Store SKU</span>
                       </label>
                       {canManage && selectedDetail.sheet.status !== "completed" ? <Button type="button" data-tutorial="partner-add-product" onClick={openItemModal} className="h-8 rounded-lg bg-black px-2.5 text-[11px] font-bold text-white hover:bg-black"><PackagePlus className="size-3.5" />Add Product</Button> : null}
+                      {canManage && selectedDetail.sheet.status === "draft" ? <Button type="button" variant="outline" onClick={() => openSheet(selectedDetail.sheet)} className="h-8 rounded-lg bg-white px-2.5 text-[11px] font-bold hover:bg-white"><Pencil className="size-3.5" />Edit Sheet</Button> : null}
                       <Button type="button" variant="outline" onClick={copyWhatsApp} disabled={isPending} className="h-8 rounded-lg bg-white px-2.5 text-[11px] font-bold hover:bg-white"><Clipboard className="size-3.5" />WhatsApp</Button>
                       <Button type="button" variant="outline" onClick={downloadExcel} disabled={isPending} className="h-8 rounded-lg bg-white px-2.5 text-[11px] font-bold hover:bg-white"><Download className="size-3.5" />Excel</Button>
                       {canManage && selectedDetail.sheet.status === "draft" ? <Button type="button" onClick={() => changeStatus("confirmed")} className="h-8 rounded-lg bg-blue-600 px-2.5 text-[11px] text-white hover:bg-blue-600"><Check className="size-3.5" />Confirm</Button> : null}
                       {canManage && selectedDetail.sheet.status === "confirmed" ? <Button type="button" onClick={() => changeStatus("sent")} className="h-8 rounded-lg bg-orange px-2.5 text-[11px] text-white hover:bg-orange"><Send className="size-3.5" />Mark Sent</Button> : null}
                       {canManage && selectedDetail.sheet.status === "sent" ? <Button type="button" onClick={() => changeStatus("completed")} className="h-8 rounded-lg bg-lime px-2.5 text-[11px] text-black hover:bg-lime"><Check className="size-3.5" />Complete</Button> : null}
                       {canManage && !selectedDetail.sheet.stock_deducted_at && (selectedDetail.sheet.status === "sent" || selectedDetail.sheet.status === "completed") ? <Button type="button" onClick={deductStock} variant="outline" className="h-8 rounded-lg bg-white px-2.5 text-[11px] font-bold hover:bg-white">Deduct Stock</Button> : null}
+                      {canManage && selectedDetail.sheet.status === "draft" ? <Button type="button" variant="destructive" onClick={deleteSelectedDraftSheet} className="h-8 rounded-lg px-2.5 text-[11px] font-bold"><Trash2 className="size-3.5" />Delete Draft</Button> : null}
                     </div>
                   </div>
 
@@ -554,7 +615,7 @@ export function PartnerShareManager({
                       <div key={item.id} className="rounded-2xl border border-border bg-white p-3 shadow-sm shadow-black/5">
                         <div className="flex items-start gap-3">
                           <div className="relative grid size-12 shrink-0 place-items-center overflow-hidden rounded-xl bg-lime text-base font-black">
-                            {item.photo_url ? <Image src={item.photo_url} alt={item.product_name} fill sizes="48px" className="object-cover" /> : item.product_name.slice(0, 1)}
+                            {item.photo_url ? <Image src={item.photo_url} alt={item.product_name} fill loading="lazy" quality={60} sizes="48px" className="object-cover" /> : item.product_name.slice(0, 1)}
                           </div>
                           <div className="min-w-0 flex-1">
                             <div className="line-clamp-2 text-base font-black leading-tight tracking-[-0.04em]" title={productLabel(item)}>{productLabel(item)}</div>
@@ -588,8 +649,8 @@ export function PartnerShareManager({
                     ))}
                   </div>
 
-                  <div className="mt-4 hidden overflow-hidden rounded-2xl border border-border bg-white/80 sm:block">
-                    <table className="w-full table-fixed border-collapse text-left text-xs">
+                  <div className="mt-4 hidden overflow-x-auto overscroll-x-contain rounded-2xl border border-border bg-white/80 sm:block">
+                    <table className="w-full min-w-[760px] table-fixed border-collapse text-left text-xs">
                       <colgroup>
                         <col className="w-[27%]" />
                         <col className="w-[13%]" />
@@ -616,7 +677,7 @@ export function PartnerShareManager({
                             <td className="px-2 py-2">
                               <div className="flex min-w-0 items-center gap-2">
                                 <div className="relative grid size-8 shrink-0 place-items-center overflow-hidden rounded-lg bg-lime text-xs font-black">
-                                  {item.photo_url ? <Image src={item.photo_url} alt={item.product_name} fill sizes="32px" className="object-cover" /> : item.product_name.slice(0, 1)}
+                                  {item.photo_url ? <Image src={item.photo_url} alt={item.product_name} fill loading="lazy" quality={60} sizes="32px" className="object-cover" /> : item.product_name.slice(0, 1)}
                                 </div>
                                 <div className="min-w-0 truncate font-black tracking-[-0.02em]" title={productLabel(item)}>{productLabel(item)}</div>
                               </div>
@@ -656,33 +717,53 @@ export function PartnerShareManager({
 
       {modal ? (
         <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={() => { if (!isPending) closeModal(); }}>
-          <FluidEntrySurface data-tutorial="partner-modal" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-5" wrapperClassName="w-full max-w-[22rem] sm:max-w-2xl" onClick={(event) => event.stopPropagation()}>
+          <FluidEntrySurface data-tutorial="partner-modal" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white shadow-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overscroll-contain overflow-y-auto p-4 sm:p-5" wrapperClassName="w-full min-w-0 max-w-[calc(100vw-1rem)] sm:max-w-2xl" onClick={(event) => event.stopPropagation()}>
             <div className="flex items-start justify-between gap-4">
-              <div>
-                <h3 className="text-2xl font-black tracking-[-0.05em]">{modal === "partner" ? "Partner" : modal === "sheet" ? "Share Sheet" : modal === "edit-item" ? "Edit Product" : "Add Product"}</h3>
-                <p className="mt-1 text-sm font-bold text-zinc-500">{modal === "item" ? "Tap any SKU below to add it instantly with 1 pc." : "Every save requires confirmation."}</p>
+              <div className="min-w-0">
+                <h3 className="break-words text-xl font-black tracking-[-0.05em] sm:text-2xl">{modal === "partners" ? "Manage Partners" : modal === "partner" ? (partnerDraft.partnerId ? "Edit Partner" : "Add Partner") : modal === "sheet" ? (sheetDraft.sheetId ? "Edit Share Sheet" : "Add Share Sheet") : modal === "edit-item" ? "Edit Product" : "Add Product"}</h3>
+                <p className="mt-1 text-pretty text-xs font-bold text-zinc-500 sm:text-sm">{modal === "partners" ? "Edit or delete partner records." : modal === "item" ? "Tap any SKU below to add it instantly with 1 pc." : "Every save requires confirmation."}</p>
               </div>
               <button type="button" onClick={closeModal} disabled={isPending} className="grid size-10 place-items-center rounded-xl border border-border disabled:opacity-50" aria-label="Close partner form"><X className="size-5" /></button>
             </div>
+            {modal === "partners" ? (
+              <div className="mt-5 grid gap-3">
+                <Button type="button" onClick={() => openPartner()} className="h-10 w-full rounded-xl bg-black font-black text-white hover:bg-black sm:h-11"><Plus className="size-4" />Add Partner</Button>
+                {pageData.partners.length === 0 ? <div className="rounded-xl bg-zinc-50 p-4 text-sm font-bold text-zinc-500">No partners yet.</div> : null}
+                <div className="grid max-h-[52dvh] gap-2 overflow-y-auto overscroll-contain pr-1">
+                  {pageData.partners.map((partner) => (
+                    <div key={partner.id} className="grid min-w-0 gap-2.5 rounded-xl border border-border bg-zinc-50 p-2.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:rounded-2xl sm:p-3">
+                      <div className="min-w-0">
+                        <div className="truncate font-black" title={partner.name}>{partner.name}</div>
+                        <div className="mt-1 break-words text-xs font-semibold text-zinc-500">{partner.contact_name || "No contact"}{partner.phone_raw ? ` · ${partner.phone_raw}` : ""}</div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button type="button" variant="outline" onClick={() => openPartner(partner)} className="h-9 rounded-xl bg-white px-3 text-xs font-black hover:bg-white"><Pencil className="size-3.5" />Edit</Button>
+                        <Button type="button" variant="destructive" onClick={() => archivePartner(partner)} className="h-9 rounded-xl px-3 text-xs font-black"><Trash2 className="size-3.5" />Delete</Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             {modal === "partner" ? (
               <form onSubmit={submitPartner} className="mt-5 grid gap-4">
-                <Input data-tutorial="partner-modal-name" required name="partner-name" autoComplete="off" value={partnerDraft.name} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, name: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="Partner name" />
-                <Input name="partner-contact" autoComplete="off" value={partnerDraft.contactName} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, contactName: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="Contact name" />
-                <Input name="partner-phone" type="tel" inputMode="tel" autoComplete="off" value={partnerDraft.phoneRaw} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, phoneRaw: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="WhatsApp / phone" />
-                <Textarea name="partner-notes" autoComplete="off" value={partnerDraft.notes} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, notes: event.target.value }))} className="min-h-24 rounded-xl font-bold" placeholder="Notes" />
+                <label className="grid min-w-0 gap-1.5 text-xs font-black text-zinc-600">Partner Name<Input data-tutorial="partner-modal-name" required name="partner-name" autoComplete="off" value={partnerDraft.name} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, name: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="Example: Puppy Love…" /></label>
+                <label className="grid min-w-0 gap-1.5 text-xs font-black text-zinc-600">Contact Name<Input name="partner-contact" autoComplete="off" value={partnerDraft.contactName} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, contactName: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="Example: Weihang…" /></label>
+                <label className="grid min-w-0 gap-1.5 text-xs font-black text-zinc-600">WhatsApp / Phone<Input name="partner-phone" type="tel" inputMode="tel" autoComplete="off" value={partnerDraft.phoneRaw} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, phoneRaw: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="Example: 012-345 6789…" /></label>
+                <label className="grid min-w-0 gap-1.5 text-xs font-black text-zinc-600">Notes<Textarea name="partner-notes" autoComplete="off" value={partnerDraft.notes} onChange={(event) => setPartnerDraft((draft) => ({ ...draft, notes: event.target.value }))} className="min-h-24 rounded-xl font-bold" placeholder="Ordering notes…" /></label>
                 <Button data-tutorial="partner-modal-review" className="h-12 rounded-xl bg-black font-bold text-white hover:bg-black">Review Partner</Button>
               </form>
             ) : null}
             {modal === "sheet" ? (
               <form onSubmit={submitSheet} className="mt-5 grid gap-4">
-                <NativeSelect required name="share-partner" value={sheetDraft.partnerId} onChange={(event) => setSheetDraft((draft) => ({ ...draft, partnerId: event.target.value }))} className="h-12 rounded-xl bg-white font-bold">
+                <label className="grid min-w-0 gap-1.5 text-xs font-black text-zinc-600">Partner<NativeSelect required name="share-partner" value={sheetDraft.partnerId} onChange={(event) => setSheetDraft((draft) => ({ ...draft, partnerId: event.target.value }))} className="h-12 rounded-xl bg-white font-bold">
                   {pageData.partners.map((partner) => <NativeSelectOption key={partner.id} value={partner.id}>{partner.name}</NativeSelectOption>)}
-                </NativeSelect>
-                <NativeSelect required name="share-location" value={sheetDraft.locationId} onChange={(event) => setSheetDraft((draft) => ({ ...draft, locationId: event.target.value }))} className="h-12 rounded-xl bg-white font-bold">
+                </NativeSelect></label>
+                <label className="grid min-w-0 gap-1.5 text-xs font-black text-zinc-600">Warehouse<NativeSelect required name="share-location" value={sheetDraft.locationId} onChange={(event) => setSheetDraft((draft) => ({ ...draft, locationId: event.target.value }))} className="h-12 rounded-xl bg-white font-bold">
                   {locationRows.map((row) => <NativeSelectOption key={row.location_id} value={row.location_id}>{row.location_name}</NativeSelectOption>)}
-                </NativeSelect>
-                <Input data-tutorial="partner-modal-date" required name="share-date" type="date" value={sheetDraft.shareDate} onChange={(event) => setSheetDraft((draft) => ({ ...draft, shareDate: event.target.value }))} className="h-12 rounded-xl font-bold" />
-                <Button data-tutorial="partner-modal-review" className="h-12 rounded-xl bg-black font-bold text-white hover:bg-black">Review Sheet</Button>
+                </NativeSelect></label>
+                <label className="grid min-w-0 gap-1.5 text-xs font-black text-zinc-600">Share Date<Input data-tutorial="partner-modal-date" required name="share-date" type="date" value={sheetDraft.shareDate} onChange={(event) => setSheetDraft((draft) => ({ ...draft, shareDate: event.target.value }))} className="h-12 rounded-xl font-bold" /></label>
+                <Button data-tutorial="partner-modal-review" className="h-12 rounded-xl bg-black font-bold text-white hover:bg-black">{sheetDraft.sheetId ? "Review Sheet Changes" : "Review New Sheet"}</Button>
               </form>
             ) : null}
             {modal === "item" || modal === "edit-item" ? (
@@ -695,15 +776,18 @@ export function PartnerShareManager({
                          <div className="grid gap-2">
                            {paginatedProductRows.length === 0 ? <div className="rounded-xl bg-white px-3 py-6 text-center text-sm font-semibold text-zinc-500">No matching active SKUs.</div> : null}
                            {paginatedProductRows.map((row) => {
-                             const disabled = selectedSkuIds.has(inventoryKey(row.sku_id, row.location_id));
+                             const key = inventoryKey(row.sku_id, row.location_id);
+                             const disabled = selectedSkuIds.has(key);
+                             const isQuickAdding = quickAddingKey === key;
                              return (
                                <button
-                                 key={inventoryKey(row.sku_id, row.location_id)}
+                                 key={key}
                                  type="button"
                                  data-tutorial="partner-modal-product-row"
                                  onClick={() => quickAddProduct(row)}
                                  disabled={disabled || isPending}
-                                 className={cn("rounded-xl border border-zinc-200 bg-white px-3 py-3 text-left transition hover:border-black", disabled && "cursor-not-allowed border-zinc-100 bg-zinc-100 text-zinc-400 hover:border-zinc-100")}
+                                 aria-busy={isQuickAdding}
+                                 className={cn("rounded-xl border border-zinc-200 bg-white px-3 py-3 text-left transition hover:border-black disabled:cursor-wait disabled:opacity-75", disabled && "cursor-not-allowed border-zinc-100 bg-zinc-100 text-zinc-400 hover:border-zinc-100")}
                                >
                                  <div className="flex items-start justify-between gap-3">
                                    <div className="min-w-0">
@@ -715,7 +799,10 @@ export function PartnerShareManager({
                                      <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-400">stock</div>
                                    </div>
                                  </div>
-                                 <div className="mt-2 text-[11px] font-bold text-zinc-500">{disabled ? "Already on this sheet" : "Click to add instantly with 1 pc"}</div>
+                                 <div className="mt-2 flex items-center gap-2 text-[11px] font-bold text-zinc-500">
+                                   {isQuickAdding ? <LumaSpinner className="size-4" label="Adding product" /> : null}
+                                   <span>{disabled ? "Already on this sheet" : isQuickAdding ? "Adding now..." : "Click to add instantly with 1 pc"}</span>
+                                 </div>
                                </button>
                              );
                            })}
@@ -733,8 +820,8 @@ export function PartnerShareManager({
                  ) : null}
                  {modal === "edit-item" ? (
                    <>
-                     <Input data-tutorial="partner-modal-share-qty" required name="share-qty" inputMode="numeric" min={1} type="number" value={itemDraft.shareQty} onChange={(event) => setItemDraft((draft) => ({ ...draft, shareQty: event.target.value }))} className="h-12 rounded-xl font-bold" placeholder="Share qty" />
-                     <Textarea name="share-remark" autoComplete="off" value={itemDraft.remark} onChange={(event) => setItemDraft((draft) => ({ ...draft, remark: event.target.value }))} className="min-h-24 rounded-xl font-bold" placeholder="Remark" />
+                     <label className="grid min-w-0 gap-1.5 text-xs font-black text-zinc-600">Share Quantity<Input data-tutorial="partner-modal-share-qty" required name="share-qty" inputMode="numeric" min={1} type="number" value={itemDraft.shareQty} onChange={(event) => setItemDraft((draft) => ({ ...draft, shareQty: event.target.value }))} className="h-12 rounded-xl font-bold" /></label>
+                     <label className="grid min-w-0 gap-1.5 text-xs font-black text-zinc-600">Remark<Textarea name="share-remark" autoComplete="off" value={itemDraft.remark} onChange={(event) => setItemDraft((draft) => ({ ...draft, remark: event.target.value }))} className="min-h-24 rounded-xl font-bold" placeholder="Optional remark…" /></label>
                      <Button data-tutorial="partner-modal-review" className="h-12 rounded-xl bg-black font-bold text-white hover:bg-black">Review Product</Button>
                    </>
                  ) : null}
@@ -782,7 +869,7 @@ export function PartnerShareManager({
       ) : null}
 
       {confirmation ? (
-        <ConfirmSlideSheet
+        <ConfirmActionSheet
           title={confirmation.title}
           description={confirmation.description}
           records={confirmation.records}

@@ -225,6 +225,7 @@ export type Database = {
         Row: PartnerShareItemRow;
       };
     };
+    Views: Record<string, never>;
     Functions: {
       claim_bootstrap_admin: {
         Args: Record<PropertyKey, never>;
@@ -413,6 +414,10 @@ export type Database = {
         Args: { p_category_id: string; p_name: string };
         Returns: string;
       };
+      admin_archive_product_category: {
+        Args: { p_category_id: string };
+        Returns: string;
+      };
       get_partner_share_page_data: {
         Args: { p_organization_id: string };
         Returns: Json;
@@ -435,6 +440,14 @@ export type Database = {
       };
       admin_create_partner_share_sheet: {
         Args: { p_partner_id: string; p_location_id: string; p_share_date?: string | null };
+        Returns: string;
+      };
+      admin_delete_draft_partner_share_sheet: {
+        Args: { p_sheet_id: string };
+        Returns: string;
+      };
+      admin_update_draft_partner_share_sheet: {
+        Args: { p_sheet_id: string; p_partner_id: string; p_location_id: string; p_share_date: string };
         Returns: string;
       };
       admin_add_partner_share_item: {
@@ -472,6 +485,7 @@ export type Database = {
       movement_type: "add" | "deduct" | "adjustment";
       plan_name: "basic" | "custom";
     };
+    CompositeTypes: Record<string, never>;
   };
 };
 

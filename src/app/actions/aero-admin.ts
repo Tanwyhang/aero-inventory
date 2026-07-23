@@ -1,12 +1,13 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 
 import { safeActionError } from "@/lib/action-error";
-import { callAeroAdminRpc } from "@/lib/aero-admin-server";
-import { isMissingSessionError } from "@/lib/auth";
-import { createClient } from "@/lib/supabase/server";
+import { AERO_ADMIN_CUSTOMERS_CACHE_TAG, callAeroAdminRpc } from "@/lib/aero-admin-server";
+import { hasAeroSuperAdminPasswordSession, isAeroSuperAdminPassword, setAeroSuperAdminPasswordSession } from "@/lib/aero-admin-password";
+import { createServiceRoleClient } from "@/lib/supabase/service-role";
 
 export type AeroAdminActionState = {
   status: "idle" | "success" | "error";
@@ -21,30 +22,22 @@ const updateWorkspaceSchema = z.object({
 });
 
 async function verifySuperAdmin() {
-  const supabase = await createClient();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-
-  if (userError && !isMissingSessionError(userError)) {
-    console.error("Aero Super Admin action session lookup failed", {
-      code: userError.code,
-      message: userError.message,
-    });
-    return { supabase, authorized: false, reason: "verify" as const };
+  if (!(await hasAeroSuperAdminPasswordSession())) {
+    return { supabase: null, authorized: false as const, reason: "session" as const };
   }
 
-  if (!userData.user) return { supabase, authorized: false, reason: "session" as const };
+  return { supabase: createServiceRoleClient(), authorized: true as const, reason: null };
+}
 
-  const { data, error } = await callAeroAdminRpc<boolean>(supabase, "is_aero_super_admin");
-  if (error) {
-    console.error("Aero Super Admin action authorization failed", {
-      userId: userData.user.id,
-      code: error.code ?? null,
-      message: error.message ?? null,
-    });
-    return { supabase, authorized: false, reason: "verify" as const };
+export async function unlockAeroAdminAction(formData: FormData) {
+  const password = String(formData.get("password") ?? "");
+
+  if (!isAeroSuperAdminPassword(password)) {
+    redirect("/aero-admin?error=password");
   }
 
-  return { supabase, authorized: data === true, reason: data === true ? null : "access" as const };
+  await setAeroSuperAdminPasswordSession();
+  redirect("/aero-admin");
 }
 
 export async function updateAeroCustomerAction(
@@ -73,7 +66,7 @@ export async function updateAeroCustomerAction(
     };
   }
 
-  const { data, error } = await callAeroAdminRpc<string>(access.supabase, "super_admin_update_workspace", {
+  const { data, error } = await callAeroAdminRpc<string>(access.supabase, "service_role_update_aero_customer", {
     p_organization_id: parsed.data.organizationId,
     p_admin_limit: parsed.data.adminLimit,
     p_staff_limit: parsed.data.staffLimit,
@@ -95,5 +88,6 @@ export async function updateAeroCustomerAction(
   }
 
   revalidatePath("/aero-admin");
+  revalidateTag(AERO_ADMIN_CUSTOMERS_CACHE_TAG);
   return { status: "success", message: "Customer settings saved." };
 }

@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, BarChart3, BookOpen, Box, Eye, Handshake, Package, RotateCcw } from "lucide-react";
 import { motion } from "motion/react";
 
-import aeroLogo from "../../design/logoword.png";
+import aeroLogo from "../../design/logoword.webp";
 import { cn } from "@/lib/utils";
 import type { MemberRole } from "@/types/database";
 
@@ -83,6 +83,7 @@ export function AppSidebar({
 
       <Link
         href="/workspaces"
+        prefetch={true}
         className="mt-10 hidden w-full items-center gap-3 rounded-xl border border-dashed border-zinc-300 bg-zinc-50 px-4 py-3 text-left text-sm font-black text-zinc-600 transition hover:border-black hover:bg-white hover:text-black lg:flex"
       >
         <ArrowLeft className="size-4 shrink-0" aria-hidden="true" />
@@ -100,6 +101,7 @@ export function AppSidebar({
             <Link
               key={item.label}
               href={item.href}
+              prefetch={true}
               aria-current={optimisticActive === item.key ? "page" : undefined}
               data-tutorial={`nav-${item.key}`}
               onClick={() => activateOptimistically(item)}
