@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 
 import { LazyInventoryDashboard } from "@/components/lazy-page-components";
 import { getRequestAccessToken, requireMembership } from "@/lib/auth";
-import { getCachedAdminInventory, getCachedRestockRequests, getCachedStaffInventory } from "@/lib/cached-data";
+import { getCachedActiveRestockCount, getCachedAdminInventory, getCachedStaffInventory } from "@/lib/cached-data";
 import { withSignedSkuPhotoUrls } from "@/lib/sku-photos";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,20 +30,25 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ c
   const accessToken = await getRequestAccessToken();
   if (!accessToken) redirect("/login");
 
-  const [staffRows, adminRows, restockRequests] = await Promise.all([
-    getCachedStaffInventory(membership.organization_id, accessToken),
-    membership.role === "admin"
-      ? getCachedAdminInventory(membership.organization_id, accessToken)
-      : Promise.resolve([]),
-    membership.role === "admin"
-      ? getCachedRestockRequests(membership.organization_id, accessToken)
-      : Promise.resolve([]),
-  ]);
+  const dashboardMembership = {
+    organization_id: membership.organization_id,
+    organization_name: membership.organization_name,
+    organization_icon: membership.organization_icon,
+    role: membership.role,
+  };
 
-  const [signedStaffRows, signedAdminRows] = await Promise.all([
-    withSignedSkuPhotoUrls(staffRows),
-    withSignedSkuPhotoUrls(adminRows),
-  ]);
+  if (membership.role === "admin") {
+    const [adminRows, restockCount] = await Promise.all([
+      getCachedAdminInventory(membership.organization_id, accessToken),
+      getCachedActiveRestockCount(membership.organization_id, accessToken),
+    ]);
+    const signedAdminRows = await withSignedSkuPhotoUrls(adminRows);
 
-  return <LazyInventoryDashboard membership={membership} staffRows={signedStaffRows} adminRows={signedAdminRows} restockRequests={restockRequests} />;
+    return <LazyInventoryDashboard membership={dashboardMembership} staffRows={[]} adminRows={signedAdminRows} restockCount={restockCount} />;
+  }
+
+  const staffRows = await getCachedStaffInventory(membership.organization_id, accessToken);
+  const signedStaffRows = await withSignedSkuPhotoUrls(staffRows);
+
+  return <LazyInventoryDashboard membership={dashboardMembership} staffRows={signedStaffRows} adminRows={[]} restockCount={0} />;
 }

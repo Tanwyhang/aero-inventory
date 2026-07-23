@@ -140,6 +140,19 @@ export async function getCachedRestockRequests(organizationId: string, accessTok
   });
 }
 
+export async function getCachedActiveRestockCount(organizationId: string, accessToken: string) {
+  return cachedWorkspaceQuery("active-restock-count", organizationId, accessToken, async (supabase) => {
+    const { count, error } = await supabase
+      .from("restock_requests")
+      .select("id", { count: "exact", head: true })
+      .eq("organization_id", organizationId)
+      .in("status", ["open", "acknowledged", "ordered"]);
+
+    if (error) throwQueryError("active restock count", organizationId, error);
+    return count ?? 0;
+  });
+}
+
 export async function getCachedSkuManagerRows(organizationId: string, accessToken: string) {
   return cachedWorkspaceQuery("sku-manager", organizationId, accessToken, async (supabase) => {
     const { data, error } = await supabase.rpc("get_admin_sku_manager_rows", { p_organization_id: organizationId });

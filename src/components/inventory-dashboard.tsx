@@ -3,8 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
-import { motion } from "motion/react";
+import { FormEvent, useDeferredValue, useMemo, useState } from "react";
 import {
   ArrowUpDown,
   Check,
@@ -42,6 +41,7 @@ type StockMovementMode = "absolute" | "relative";
 type StockMovementDirection = "add" | "deduct";
 type StockFilter = "all" | "low" | "out";
 type StockAdjustmentTarget = { row: InventoryRow; direction: StockMovementDirection };
+type InventoryMembership = Pick<Membership, "organization_id" | "organization_name" | "organization_icon" | "role">;
 
 type StockGroupEntry = {
   type: "group";
@@ -59,6 +59,8 @@ type StockGroupEntry = {
 type StockListEntry = StockGroupEntry | { type: "sku"; row: InventoryRow };
 
 const STAFF_VIEW_STORAGE_KEY = "aero:view-as-staff";
+const INITIAL_VISIBLE_ENTRIES = 24;
+const VISIBLE_ENTRIES_STEP = 24;
 
 function isAdminRow(row: InventoryRow): row is AdminInventoryRow {
   return "supplier_name" in row;
@@ -72,35 +74,21 @@ function roleViewLabel(role: MemberRole) {
 
 export function ProductThumb({ label, photoUrl, eager = false }: { label: string; photoUrl?: string | null; eager?: boolean }) {
   const fadeMask = "linear-gradient(to right, black 0%, black 48%, rgba(0,0,0,0.65) 68%, transparent 100%)";
-  const washMask = "linear-gradient(to right, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.25) 54%, transparent 100%)";
 
   return (
     <div className="relative h-full min-h-12 w-16 shrink-0 overflow-hidden bg-white text-xl font-black">
       {photoUrl ? (
-        <>
-          <Image
-            src={photoUrl}
-            alt=""
-            aria-hidden="true"
-            fill
-            loading={eager ? "eager" : "lazy"}
-            quality={50}
-            sizes="80px"
-            className="scale-125 object-cover opacity-20 blur-2xl saturate-125"
-            style={{ WebkitMaskImage: washMask, maskImage: washMask }}
-          />
-          <Image
-            src={photoUrl}
-            alt=""
-            aria-hidden="true"
-            fill
-            loading={eager ? "eager" : "lazy"}
-            quality={65}
-            sizes="80px"
-            className="object-cover"
-            style={{ WebkitMaskImage: fadeMask, maskImage: fadeMask }}
-          />
-        </>
+        <Image
+          src={photoUrl}
+          alt=""
+          aria-hidden="true"
+          fill
+          loading={eager ? "eager" : "lazy"}
+          quality={60}
+          sizes="80px"
+          className="object-cover"
+          style={{ WebkitMaskImage: fadeMask, maskImage: fadeMask }}
+        />
       ) : (
         <div className="grid size-full place-items-center bg-gradient-to-r from-lime via-lime/40 to-white text-3xl text-black/80">{label.slice(0, 1)}</div>
       )}
@@ -678,7 +666,7 @@ function StockRowCard({
   const status = stockStatus(row);
 
   return (
-    <FluidEntrySurface key={`${row.sku_id}-${row.location_id}`} data-tutorial={nested ? "stock-child-row" : "stock-row"} entryDelay={nested ? 0 : Math.min(index * 0.04, 0.28)} className={cn("rounded-lg border border-zinc-200 bg-white transition-colors hover:border-zinc-300", nested && "shadow-sm shadow-black/5")}>
+    <div data-tutorial={nested ? "stock-child-row" : "stock-row"} className={cn("w-full overflow-hidden rounded-lg border border-zinc-200 bg-white transition-colors hover:border-zinc-300", nested && "shadow-sm shadow-black/5")}>
       <div className="p-1.5 xl:hidden">
         <div className="flex items-start gap-2">
           <div className="relative size-9 shrink-0 overflow-hidden rounded-md border border-zinc-200 bg-white ring-1 ring-black/5 sm:size-10">
@@ -826,7 +814,7 @@ function StockRowCard({
           )}
         </div>
       </div>
-    </FluidEntrySurface>
+    </div>
   );
 }
 
@@ -849,7 +837,7 @@ function StockGroupCard({
   const primarySupplier = entry.rows.find(isAdminRow);
 
   return (
-    <FluidEntrySurface data-tutorial="stock-group" entryDelay={Math.min(index * 0.04, 0.28)} className="overflow-hidden rounded-lg border border-zinc-200 bg-white transition-colors hover:border-zinc-300" contentClassName="p-0">
+    <div data-tutorial="stock-group" className="w-full overflow-hidden rounded-lg border border-zinc-200 bg-white transition-colors hover:border-zinc-300">
       <div className="lg:hidden">
         <div className="border-b border-zinc-200 bg-zinc-50/70 p-3">
           <div className="flex min-w-0 gap-2.5">
@@ -994,7 +982,7 @@ function StockGroupCard({
           })}
         </div>
       </div>
-    </FluidEntrySurface>
+    </div>
   );
 }
 
@@ -1002,16 +990,18 @@ export function InventoryDashboard({
   membership,
   adminRows,
   staffRows,
-  restockRequests,
+  restockCount,
 }: {
-  membership: Membership;
+  membership: InventoryMembership;
   adminRows: AdminInventoryRow[];
   staffRows: StaffInventoryRow[];
-  restockRequests: RestockRequestRow[];
+  restockCount: number;
 }) {
   const [sortDirection, setSortDirection] = useState<"asc" | "desc">("desc");
   const [query, setQuery] = useState("");
   const [stockFilter, setStockFilter] = useState<"all" | "low" | "out">("all");
+  const [visibleCount, setVisibleCount] = useState(INITIAL_VISIBLE_ENTRIES);
+  const deferredQuery = useDeferredValue(query);
   const [viewAsStaff, setViewAsStaff] = useState(() => {
     if (typeof window === "undefined") return false;
     return window.localStorage.getItem(STAFF_VIEW_STORAGE_KEY) === "true";
@@ -1022,12 +1012,23 @@ export function InventoryDashboard({
   const [ping, setPing] = useState<InventoryRow | null>(null);
   const isAdmin = membership.role === "admin";
   const effectiveRole = isAdmin && viewAsStaff ? "staff" : membership.role;
-  const rows: InventoryRow[] = effectiveRole === "admin" ? adminRows : staffRows;
-  const stockEntries = useMemo(() => buildStockEntries(rows, query, stockFilter, sortDirection), [query, rows, sortDirection, stockFilter]);
+  const rows: InventoryRow[] = isAdmin ? adminRows : staffRows;
+  const stockEntries = useMemo(() => buildStockEntries(rows, deferredQuery, stockFilter, sortDirection), [deferredQuery, rows, sortDirection, stockFilter]);
+  const visibleEntries = stockEntries.slice(0, visibleCount);
   const total = rows.length;
-  const inStock = rows.filter((row) => row.quantity > row.low_stock_qty).length;
-  const lowStock = rows.filter((row) => row.is_low_stock && !row.is_out_of_stock).length;
-  const outOfStock = rows.filter((row) => row.is_out_of_stock).length;
+  const { inStock, lowStock, outOfStock } = useMemo(() => {
+    let nextInStock = 0;
+    let nextLowStock = 0;
+    let nextOutOfStock = 0;
+
+    for (const row of rows) {
+      if (row.quantity > row.low_stock_qty) nextInStock += 1;
+      if (row.is_low_stock && !row.is_out_of_stock) nextLowStock += 1;
+      if (row.is_out_of_stock) nextOutOfStock += 1;
+    }
+
+    return { inStock: nextInStock, lowStock: nextLowStock, outOfStock: nextOutOfStock };
+  }, [rows]);
   const stats = [
     { label: "Total Products", value: total, icon: Package, fill: "fill-lime" },
     { label: "In Stock", value: inStock, icon: Check, fill: "fill-none" },
@@ -1036,6 +1037,7 @@ export function InventoryDashboard({
   ];
 
   function toggleStaffView() {
+    setVisibleCount(INITIAL_VISIBLE_ENTRIES);
     setViewAsStaff((current) => {
       const next = !current;
       window.localStorage.setItem(STAFF_VIEW_STORAGE_KEY, String(next));
@@ -1046,7 +1048,7 @@ export function InventoryDashboard({
   return (
     <main className="min-h-screen overflow-x-hidden bg-white pb-[calc(6rem+env(safe-area-inset-bottom))] text-black lg:pb-0">
       <div className="min-h-screen lg:pl-[242px]">
-        <AppSidebar active="stock" role={effectiveRole} workspaceName={membership.organization_name} restockCount={restockRequests.length} showStaffToggle={isAdmin} isViewingAsStaff={viewAsStaff} onToggleStaffView={toggleStaffView} />
+        <AppSidebar active="stock" role={effectiveRole} workspaceName={membership.organization_name} restockCount={restockCount} showStaffToggle={isAdmin} isViewingAsStaff={viewAsStaff} onToggleStaffView={toggleStaffView} />
 
         <section className="px-3 py-4 sm:px-8 sm:py-8 lg:px-7 xl:px-8">
           <header className="flex items-start justify-between gap-4">
@@ -1091,23 +1093,19 @@ export function InventoryDashboard({
             <div className="grid gap-3 xl:grid-cols-[1fr_auto_auto] xl:items-center">
               <label className="flex h-12 items-center gap-3 rounded-xl border border-border bg-zinc-50 px-3 sm:h-14 sm:gap-4 sm:px-4">
                 <Search className="size-5 shrink-0" />
-                <input data-tutorial="stock-search" aria-label="Search inventory" value={query} onChange={(event) => setQuery(event.target.value)} className="h-full min-w-0 flex-1 bg-transparent text-base font-semibold text-black outline-none placeholder:text-zinc-500" placeholder="Search product or SKU" />
+                <input data-tutorial="stock-search" aria-label="Search inventory" value={query} onChange={(event) => { setQuery(event.target.value); setVisibleCount(INITIAL_VISIBLE_ENTRIES); }} className="h-full min-w-0 flex-1 bg-transparent text-base font-semibold text-black outline-none placeholder:text-zinc-500" placeholder="Search product or SKU" />
               </label>
               <div className="grid grid-cols-3 rounded-xl border border-border bg-zinc-50 p-1">
                 {(["all", "low", "out"] as const).map((filter) => (
-                  <button key={filter} type="button" data-tutorial={`stock-filter-${filter}`} onClick={() => setStockFilter(filter)} className={cn("relative h-11 overflow-hidden rounded-lg px-3 text-sm font-black capitalize transition", stockFilter === filter ? "text-white" : "text-zinc-500 hover:text-black")}>
+                  <button key={filter} type="button" data-tutorial={`stock-filter-${filter}`} onClick={() => { setStockFilter(filter); setVisibleCount(INITIAL_VISIBLE_ENTRIES); }} className={cn("relative h-11 overflow-hidden rounded-lg px-3 text-sm font-black capitalize transition", stockFilter === filter ? "text-white" : "text-zinc-500 hover:text-black")}>
                     {stockFilter === filter ? (
-                      <motion.span
-                        layoutId="stock-filter-active-pill"
-                        className="absolute inset-0 rounded-lg bg-black"
-                        transition={{ duration: 0.36, ease: [0.22, 1, 0.36, 1] }}
-                      />
+                      <span className="absolute inset-0 rounded-lg bg-black" />
                     ) : null}
                     <span className="relative z-10">{filter === "all" ? "All" : filter}</span>
                   </button>
                 ))}
               </div>
-              <Button type="button" variant="outline" className="h-12 rounded-xl border-border bg-white px-4 text-sm font-black hover:bg-white sm:h-14 sm:px-5" onClick={() => setSortDirection(sortDirection === "asc" ? "desc" : "asc")}>
+              <Button type="button" variant="outline" className="h-12 rounded-xl border-border bg-white px-4 text-sm font-black hover:bg-white sm:h-14 sm:px-5" onClick={() => { setSortDirection(sortDirection === "asc" ? "desc" : "asc"); setVisibleCount(INITIAL_VISIBLE_ENTRIES); }}>
                 <ArrowUpDown className="size-4" />
                 <span className="sm:hidden">Sort: {sortDirection === "asc" ? "Low" : "High"}</span>
                 <span className="hidden sm:inline">Stock {sortDirection === "asc" ? "low to high" : "high to low"}</span>
@@ -1162,12 +1160,12 @@ export function InventoryDashboard({
               <FluidEntrySurface className="rounded-2xl border border-dashed border-zinc-300 bg-zinc-50" contentClassName="p-7 text-center sm:p-10">
                 <h2 className="text-2xl font-black tracking-[-0.05em]">No matching inventory</h2>
                 <p className="mt-2 text-sm font-semibold text-zinc-500">Clear the search or stock filter to see all products.</p>
-                <Button type="button" variant="outline" onClick={() => { setQuery(""); setStockFilter("all"); }} className="mt-5 h-11 rounded-xl bg-white px-5 font-black hover:bg-white">
+                <Button type="button" variant="outline" onClick={() => { setQuery(""); setStockFilter("all"); setVisibleCount(INITIAL_VISIBLE_ENTRIES); }} className="mt-5 h-11 rounded-xl bg-white px-5 font-black hover:bg-white">
                   Clear Filters
                 </Button>
               </FluidEntrySurface>
             ) : null}
-            {stockEntries.map((entry, index) => {
+            {visibleEntries.map((entry, index) => {
               if (entry.type === "group") {
                 return (
                   <StockGroupCard
@@ -1185,8 +1183,16 @@ export function InventoryDashboard({
             })}
           </div>
 
+          {visibleEntries.length < stockEntries.length ? (
+            <div className="mt-4 flex justify-center">
+              <Button type="button" variant="outline" className="h-11 rounded-xl bg-white px-6 font-black hover:bg-zinc-50" onClick={() => setVisibleCount((current) => current + VISIBLE_ENTRIES_STEP)}>
+                Load {Math.min(VISIBLE_ENTRIES_STEP, stockEntries.length - visibleEntries.length)} more
+              </Button>
+            </div>
+          ) : null}
+
           <FluidEntrySurface className="mt-4 rounded-2xl border border-white/50 bg-white/60 backdrop-blur-2xl sm:mt-5 sm:rounded-3xl" contentClassName="px-4 py-3 sm:px-6 sm:py-4">
-            <div className="text-base font-bold text-zinc-500">Showing {stockEntries.length} product groups from {rows.length} SKUs</div>
+            <div className="text-base font-bold text-zinc-500" aria-live="polite">Showing {visibleEntries.length} of {stockEntries.length} product groups from {rows.length} SKUs</div>
           </FluidEntrySurface>
         </section>
       </div>

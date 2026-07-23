@@ -126,7 +126,7 @@ function RolesReplica({ role }: { role: "admin" | "staff" }) {
 
 function LessonReplica({ lessonId, role }: { lessonId: TutorialLessonId; role: "admin" | "staff" }) {
   if (lessonId === "stock") {
-    return <InventoryDashboard membership={demoMembership(role)} adminRows={demoAdminRows} staffRows={demoStaffRows} restockRequests={role === "admin" ? demoRestockRequests : []} />;
+    return <InventoryDashboard membership={demoMembership(role)} adminRows={demoAdminRows} staffRows={demoStaffRows} restockCount={role === "admin" ? demoRestockRequests.length : 0} />;
   }
 
   if (lessonId === "partner") {
