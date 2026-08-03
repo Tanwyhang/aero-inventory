@@ -5,7 +5,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ImageIcon, Pencil, Plus, Save, Search, Trash2, X } from "lucide-react";
 
-import { archiveProductCategoryAction, archiveSkuAction, createProductCategoryAction, createSkuAction, createVariationGroupAction, removeSkuPhotoAction, updateProductCategoryAction, updateSkuAction, uploadSkuPhotoAction } from "@/app/actions/skus";
+import { archiveProductCategoryAction, archiveSkuAction, createProductCategoryAction, createVariationGroupAction, removeSkuPhotoAction, updateProductCategoryAction, updateSkuAction, uploadSkuPhotoAction } from "@/app/actions/skus";
 import { AppSidebar } from "@/components/app-sidebar";
 import { ConfirmActionSheet, type ConfirmationRecord } from "@/components/confirm-action-sheet";
 import { FluidEntrySurface } from "@/components/fluid-entry-surface";
@@ -34,10 +34,7 @@ type Draft = {
   originalStock: string;
   photoUrl: string | null;
   photoPath: string | null;
-  demoPhotoPath?: string;
 };
-
-type CreateMode = "single" | "variation";
 
 type VariationItemDraft = {
   clientId: string;
@@ -343,7 +340,6 @@ function PhotoPicker({
 export function AdminSkuManager({ membership, rows, categories, restockCount = 0 }: { membership: Membership; rows: AdminSkuManagerRow[]; categories: ProductCategory[]; restockCount?: number }) {
   const router = useRouter();
   const [draft, setDraft] = useState<Draft>(demoDraft);
-  const [createMode, setCreateMode] = useState<CreateMode>("single");
   const [variationDraft, setVariationDraft] = useState<VariationDraft>(() => newVariationDraft());
   const [isOpen, setIsOpen] = useState(false);
   const [isPending, setIsPending] = useState(false);
@@ -574,7 +570,6 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
     const first = sourceRows[0];
     const queuedItems = queueNewType ? [newVariationItem(sourceRows.length + 1)] : [];
 
-    setCreateMode("variation");
     setDraft({
       ...demoDraft,
       productName: first.product_name,
@@ -639,17 +634,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
   }
 
   function openCreate() {
-    const demoPhotoRow = rows.find((row) => row.photo_url && row.photo_path);
-
-    setDraft({
-      ...demoDraft,
-      skuCode: `DEMO-${Date.now().toString().slice(-5)}`,
-      categoryName: demoDraft.categoryName,
-      photoUrl: demoPhotoRow?.photo_url ?? null,
-      photoPath: demoPhotoRow?.photo_path ?? null,
-      demoPhotoPath: demoPhotoRow?.photo_path ?? undefined,
-    });
-    setCreateMode("single");
+    setDraft({ ...demoDraft });
     setVariationDraft(newVariationDraft());
     setVariationNotice(null);
     setManagedVariationItems([]);
@@ -677,9 +662,8 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
       originalStock: String(row.quantity),
       photoUrl: row.photo_url ?? null,
       photoPath: row.photo_path,
-      demoPhotoPath: undefined,
     });
-    setCreateMode("single");
+    setVariationDraft(newVariationDraft());
     setVariationNotice(null);
     setManagedVariationItems([]);
     setError(null);
@@ -780,7 +764,6 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
       }
       setConfirmation(null);
       setIsOpen(false);
-      setCreateMode("single");
       setVariationDraft(newVariationDraft());
       setVariationNotice(null);
       setManagedVariationItems([]);
@@ -800,21 +783,19 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
     setError(null);
     setConfirmError(null);
 
-    if (isEditing) {
-      const nextStock = Number(draft.openingStock || 0);
-      if (!Number.isInteger(nextStock) || nextStock < 0) {
-        setError("Enter a valid current stock count.");
-        return;
-      }
-      if (!draft.skuId || !draft.locationId) {
-        setError("This SKU is missing its stock location. Refresh and try again.");
-        return;
-      }
+    const nextStock = Number(draft.openingStock || 0);
+    if (!Number.isInteger(nextStock) || nextStock < 0) {
+      setError("Enter a valid current stock count.");
+      return;
+    }
+    if (!draft.skuId || !draft.locationId) {
+      setError("This SKU is missing its stock location. Refresh and try again.");
+      return;
     }
 
     setConfirmation({
-      title: isEditing ? "Confirm SKU Update" : "Confirm New SKU",
-      description: isEditing ? "This will update SKU details and write an audit record." : "This will create a SKU, inventory row, and starting stock record.",
+      title: "Confirm SKU Update",
+      description: "This will update SKU details and write an audit record.",
       records: [
         { label: "Product", value: draft.productName },
         { label: "Variant", value: draft.variant },
@@ -824,8 +805,8 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
         { label: "Supplier", value: draft.supplierName },
         { label: "Contact", value: draft.contactName || draft.phoneRaw },
         { label: "Low at", value: draft.lowStockQty },
-        { label: isEditing ? "Current Stock" : "Starting Stock", value: isEditing ? `${draft.originalStock} -> ${draft.openingStock}` : draft.openingStock },
-        ...(isEditing ? [{ label: "Photo Change", value: photoFile ? photoFile.name : "No photo change" }] : []),
+        { label: "Current Stock", value: `${draft.originalStock} -> ${draft.openingStock}` },
+        { label: "Photo Change", value: photoFile ? photoFile.name : "No photo change" },
       ],
       onConfirm: executeSingleSkuSave,
     });
@@ -838,20 +819,17 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
     let photoWarning = false;
 
     try {
-      const result = isEditing
-        ? await updateSkuAction({
-            ...payload,
-            skuId: draft.skuId ?? "",
-            locationId: draft.locationId ?? "",
-            expectedStock: Number(draft.originalStock || 0),
-            targetStock: Number(draft.openingStock || 0),
-          })
-        : await createSkuAction(payload);
+      const result = await updateSkuAction({
+        ...payload,
+        skuId: draft.skuId ?? "",
+        locationId: draft.locationId ?? "",
+        expectedStock: Number(draft.originalStock || 0),
+        targetStock: Number(draft.openingStock || 0),
+      });
 
       if (result.ok !== true) throw new Error(result.error ?? "SKU could not be saved. Refresh and try again.");
 
-      const createdSkuId = "skuId" in result && typeof result.skuId === "string" ? result.skuId : undefined;
-      const skuId = draft.skuId ?? createdSkuId;
+      const skuId = draft.skuId;
 
       if (photoFile && skuId) {
         const formData = new FormData();
@@ -870,7 +848,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
         photoWarning = true;
       }
 
-      toast.success(isEditing ? "SKU update recorded" : "SKU created", { description: `${payload.productName} (${payload.skuCode})` });
+      toast.success("SKU update recorded", { description: `${payload.productName} (${payload.skuCode})` });
       if (photoWarning) {
         toast.warning("SKU saved without the new photo", { description: "Reopen the SKU and retry the photo upload." });
       }
@@ -1291,7 +1269,7 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
         <div className="fixed inset-0 z-50 grid place-items-center overscroll-contain bg-black/45 px-4 py-[calc(1rem+env(safe-area-inset-top))] pb-[calc(1rem+env(safe-area-inset-bottom))]" onClick={() => !isPending && !isPhotoPending && setIsOpen(false)}>
           <div className="w-full max-w-[23rem] sm:max-w-6xl" onClick={(event) => event.stopPropagation()}>
             <FluidEntrySurface data-tutorial="sku-modal" className="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] rounded-2xl border border-white/50 bg-white/90 backdrop-blur-2xl sm:rounded-3xl" contentClassName="max-h-[calc(100dvh-env(safe-area-inset-top)-env(safe-area-inset-bottom)-2rem)] overflow-y-auto p-4 sm:p-6">
-              <form onSubmit={isEditing || createMode === "single" ? handleSubmit : handleVariationSubmit} aria-busy={isPending || isPhotoPending}>
+              <form onSubmit={isEditing ? handleSubmit : handleVariationSubmit} aria-busy={isPending || isPhotoPending}>
                 <datalist id="sku-company-options">
                   {supplierOptions.map((option) => <option key={`${option.company}-${option.contact}-${option.phone}`} value={option.company} />)}
                 </datalist>
@@ -1300,25 +1278,15 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                 </datalist>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 className="text-xl font-black tracking-[-0.05em] sm:text-2xl">{isEditing ? "Edit SKU" : createMode === "variation" ? (variationDraft.variationGroupId ? "Edit Bundle" : "Add SKU With Types") : "Add SKU"}</h2>
-                  <p className="mt-1 text-sm font-semibold text-zinc-500">{createMode === "variation" && !isEditing ? (variationDraft.variationGroupId ? "Edit saved child SKUs, update stock rules, and add new types when needed." : "Create one main SKU with types like flavor, size, or color.") : "Manage product SKU details and admin-only supplier contact information."}</p>
+                  <h2 className="text-xl font-black tracking-[-0.05em] sm:text-2xl">{isEditing ? "Edit SKU" : variationDraft.variationGroupId ? "Edit Bundle" : "Add SKU With Types"}</h2>
+                  <p className="mt-1 text-sm font-semibold text-zinc-500">{isEditing ? "Manage product SKU details and admin-only supplier contact information." : variationDraft.variationGroupId ? "Edit the main SKU, saved child SKUs, stock rules, and types." : "Create one main SKU with types like flavor, size, or color."}</p>
                 </div>
                 <button type="button" onClick={() => setIsOpen(false)} disabled={isPending || isPhotoPending} className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-border bg-white text-black disabled:opacity-50 sm:size-10" aria-label="Close SKU form">
                   <X className="size-5" />
                 </button>
               </div>
 
-              {!isEditing ? (
-                <div className="mt-5 inline-flex rounded-xl border border-border bg-zinc-50 p-1">
-                  {(["single", "variation"] as const).map((mode) => (
-                    <button key={mode} type="button" data-tutorial={`sku-mode-${mode}`} onClick={() => setCreateMode(mode)} className={`h-10 rounded-lg px-4 text-sm font-black capitalize transition ${createMode === mode ? "bg-black text-white" : "text-zinc-500 hover:text-black"}`}>
-                      {mode === "single" ? "Single SKU" : "SKU With Types"}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-
-              {isEditing || createMode === "single" ? (
+              {isEditing ? (
                 <div className="mt-6 grid gap-5 2xl:grid-cols-[1.05fr_1.05fr_0.9fr]">
                   <FormSection title="Product">
                     <div className="lg:row-span-3">
@@ -1342,13 +1310,11 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                   <FormSection title="Stock Rules">
                     <Field label="Price"><input min={0} step="0.01" inputMode="decimal" type="number" className={inputClassName} value={draft.price} onChange={(event) => updateDraft("price", event.target.value)} onBlur={(event) => updateDraft("price", normalizeNumericInput(event.target.value))} /></Field>
                     <Field label="Low at"><input min={0} step={1} inputMode="numeric" type="number" className={inputClassName} value={draft.lowStockQty} onChange={(event) => updateDraft("lowStockQty", event.target.value)} onBlur={(event) => updateDraft("lowStockQty", normalizeNumericInput(event.target.value, true))} /></Field>
-                    <Field label={isEditing ? "Current Stock" : "Starting Stock"}>
+                    <Field label="Current Stock">
                       <input min={0} step={1} inputMode="numeric" type="number" className={inputClassName} value={draft.openingStock} onChange={(event) => updateDraft("openingStock", event.target.value)} onBlur={(event) => updateDraft("openingStock", normalizeNumericInput(event.target.value, true))} />
-                      {isEditing ? (
-                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-100">
-                          <div className={`h-full rounded-full ${stockProgressColor(Number(draft.openingStock || 0), Number(draft.lowStockQty || 0))}`} style={{ width: `${stockProgress(Number(draft.openingStock || 0), Number(draft.lowStockQty || 0))}%` }} />
-                        </div>
-                      ) : null}
+                      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-zinc-100">
+                        <div className={`h-full rounded-full ${stockProgressColor(Number(draft.openingStock || 0), Number(draft.lowStockQty || 0))}`} style={{ width: `${stockProgress(Number(draft.openingStock || 0), Number(draft.lowStockQty || 0))}%` }} />
+                      </div>
                     </Field>
                   </FormSection>
                   {isEditing && draft.photoPath ? (
@@ -1380,12 +1346,12 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
                 <div className="mt-6 grid gap-5">
                   <div className="grid gap-5 2xl:grid-cols-2">
                     <FormSection title={variationDraft.variationGroupId ? "Main SKU" : "Main SKU With Types"}>
-                      <Field label="Product Name"><input data-tutorial="sku-variation-product" required readOnly={Boolean(variationDraft.variationGroupId)} className={inputClassName} value={variationDraft.productName} onChange={(event) => updateVariationDraft("productName", event.target.value)} placeholder="Cat Food Pouch x28" /></Field>
-                      <Field label="Type Group"><input required readOnly={Boolean(variationDraft.variationGroupId)} className={inputClassName} value={variationDraft.variationName} onChange={(event) => updateVariationDraft("variationName", event.target.value)} placeholder="Flavor, Size, Color, Weight" /></Field>
+                      <Field label="Product Name"><input data-tutorial="sku-variation-product" required className={inputClassName} value={variationDraft.productName} onChange={(event) => updateVariationDraft("productName", event.target.value)} placeholder="Cat Food Pouch x28" /></Field>
+                      <Field label="Type Group"><input required className={inputClassName} value={variationDraft.variationName} onChange={(event) => updateVariationDraft("variationName", event.target.value)} placeholder="Flavor, Size, Color, Weight" /></Field>
                       <Field label="Category"><CategoryDropdown value={variationDraft.categoryName} categories={categories} onChange={(value) => updateVariationDraft("categoryName", value)} onAdd={startCategoryAdd} onEdit={startCategoryEdit} onDelete={deleteCategory} {...categoryDropdownEditorProps} /></Field>
                       <label className="flex items-center justify-between gap-4 rounded-xl border-2 border-zinc-300 bg-white px-4 py-3 text-sm font-black tracking-[-0.02em] text-zinc-700 lg:col-span-2">
                         Add Type Images
-                        <input type="checkbox" checked={variationDraft.addVariationImages} disabled={Boolean(variationDraft.variationGroupId)} onChange={(event) => updateVariationDraft("addVariationImages", event.target.checked)} className="size-5 accent-lime disabled:opacity-50" />
+                        <input type="checkbox" checked={variationDraft.addVariationImages} onChange={(event) => updateVariationDraft("addVariationImages", event.target.checked)} className="size-5 accent-lime" />
                       </label>
                     </FormSection>
 
@@ -1484,10 +1450,10 @@ export function AdminSkuManager({ membership, rows, categories, restockCount = 0
               )}
 
               <div className="sticky bottom-0 z-10 -mx-4 mt-7 grid grid-cols-2 gap-2 border-t border-zinc-200 bg-white/95 px-4 pb-[calc(0.25rem+env(safe-area-inset-bottom))] pt-3 backdrop-blur sm:-mx-6 sm:flex sm:items-center sm:justify-end sm:gap-3 sm:px-6">
-                <Button type="button" variant="outline" disabled={isPending || isPhotoPending} onClick={() => setIsOpen(false)} className="min-w-0">{createMode === "variation" && variationDraft.variationGroupId ? "Discard" : "Cancel"}</Button>
+                <Button type="button" variant="outline" disabled={isPending || isPhotoPending} onClick={() => setIsOpen(false)} className="min-w-0">{!isEditing && variationDraft.variationGroupId ? "Discard" : "Cancel"}</Button>
                 <Button data-tutorial="sku-modal-review" disabled={isPending} className="min-w-0">
-                  {isPending ? <LumaSpinner label="Saving SKU" /> : createMode === "variation" && variationDraft.variationGroupId ? <Save className="size-5" /> : isEditing ? <Save className="size-5" /> : <Plus className="size-5" />}
-                  <span className="truncate">{isPending ? "Saving…" : isEditing ? "Review & Save" : createMode === "variation" ? (variationDraft.variationGroupId ? "Save Bundle" : "Create Types") : "Review & Create"}</span>
+                  {isPending ? <LumaSpinner label="Saving SKU" /> : isEditing || variationDraft.variationGroupId ? <Save className="size-5" /> : <Plus className="size-5" />}
+                  <span className="truncate">{isPending ? "Saving…" : isEditing ? "Review & Save" : variationDraft.variationGroupId ? "Save Bundle" : "Create Types"}</span>
                 </Button>
               </div>
               </form>
